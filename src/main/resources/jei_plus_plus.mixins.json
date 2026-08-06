@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.lingmu0.JeiPlusPlusMod.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "jei_plus_plus.refmap.json",
+  "mixins": [],
+  "client": [
+    "RecipeGuiLayoutsMixin",
+    "RecipesGuiMixin",
+    "RecipeBookmarkElementMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
