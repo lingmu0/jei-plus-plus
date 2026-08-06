@@ -15,7 +15,7 @@ public final class DirectoryRecipePlugin implements IModPlugin {
 
     @Override
     public ResourceLocation getPluginUid() {
-        return new ResourceLocation(JeiPlusPlus.MODID, "jei_plugin");
+        return ResourceLocation.fromNamespaceAndPath(JeiPlusPlus.MODID, "jei_plugin");
     }
 
     @Override
