@@ -12,6 +12,7 @@
     "BookmarkInputHandlerMixin",
     "RecipeGuiTabsMixin",
     "RecipeLayoutWithButtonsMixin",
+    "RecipesGuiInputHandlerMixin",
     "RecipesGuiAccessor",
     "RecipeGuiLayoutsAccessor"
   ],

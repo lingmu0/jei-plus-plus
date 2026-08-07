@@ -8,13 +8,16 @@ import java.util.List;
 
 /** One ingredient row in the recipe tree, including JEI alternatives. */
 public final class RecipeTreeInputViewModel {
+    private final RecipeTreeRequestedIngredient requestedIngredient;
     private final List<DisplayOption> displayOptions;
     private final int amount;
     private final String amountText;
     private RecipeTreeNodeViewModel child;
     private int selectedAlternativeIndex;
 
-    public RecipeTreeInputViewModel(List<DisplayOption> displayOptions, int amount, String amountText) {
+    public RecipeTreeInputViewModel(RecipeTreeRequestedIngredient requestedIngredient,
+            List<DisplayOption> displayOptions, int amount, String amountText) {
+        this.requestedIngredient = requestedIngredient == null ? null : requestedIngredient.copy();
         this.displayOptions = List.copyOf(new ArrayList<>(displayOptions));
         this.amount = Math.max(1, amount);
         this.amountText = amountText == null ? "" : amountText;
@@ -65,6 +68,21 @@ public final class RecipeTreeInputViewModel {
     public void cycleAlternative() {
         if (displayOptions.size() > 1) {
             selectedAlternativeIndex = (selectedAlternativeIndex + 1) % displayOptions.size();
+        }
+    }
+
+    public RecipeTreeInputViewModel(List<DisplayOption> displayOptions, int amount, String amountText) {
+        this(null, displayOptions, amount, amountText);
+    }
+
+    public RecipeTreeRequestedIngredient requestedIngredient() {
+        return requestedIngredient == null ? null : requestedIngredient.copy();
+    }
+
+    /** Selects the same alternative from the AE2-Utility tree interaction. */
+    public void selectAlternative(int index) {
+        if (!displayOptions.isEmpty()) {
+            selectedAlternativeIndex = Math.max(0, Math.min(displayOptions.size() - 1, index));
         }
     }
 
