@@ -16,8 +16,6 @@ public abstract class RecipesGuiMixin {
     @Shadow @Final private IRecipeGuiLogic logic;
     @Shadow @Final private IconButton nextRecipeCategory;
     @Shadow @Final private IconButton previousRecipeCategory;
-    @Shadow @Final private IconButton nextPage;
-    @Shadow @Final private IconButton previousPage;
 
     @Inject(method = "mouseScrolled", at = @At("HEAD"), cancellable = true, remap = false)
     private void jeiPlusPlus$scrollNavigation(
@@ -27,21 +25,13 @@ public abstract class RecipesGuiMixin {
         double scrollY,
         CallbackInfoReturnable<Boolean> cir
     ) {
-        if (scrollY == 0 || !insidePageRow(mouseX, mouseY)) {
-            if (scrollY != 0 && insideBand(mouseX, mouseY, previousRecipeCategory, nextRecipeCategory)) {
-                if (scrollY < 0) {
-                    logic.nextRecipeCategory();
-                } else {
-                    logic.previousRecipeCategory();
-                }
-                cir.setReturnValue(true);
-            }
+        if (scrollY == 0 || !insideBand(mouseX, mouseY, previousRecipeCategory, nextRecipeCategory)) {
             return;
         }
         if (scrollY < 0) {
-            logic.nextPage();
+            logic.nextRecipeCategory();
         } else {
-            logic.previousPage();
+            logic.previousRecipeCategory();
         }
         cir.setReturnValue(true);
     }
@@ -54,12 +44,4 @@ public abstract class RecipesGuiMixin {
         return mouseX >= leftEdge && mouseX <= rightEdge && mouseY >= top && mouseY <= bottom;
     }
 
-    private boolean insidePageRow(double mouseX, double mouseY) {
-        int left = previousPage.getX() - 20;
-        int right = nextPage.getX() + nextPage.getWidth() + 20;
-        int top = Math.min(previousPage.getY(), nextPage.getY()) - 18;
-        int bottom = Math.max(previousPage.getY() + previousPage.getHeight(),
-            nextPage.getY() + nextPage.getHeight()) + 18;
-        return mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom;
-    }
 }
