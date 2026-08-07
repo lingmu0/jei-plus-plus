@@ -40,10 +40,10 @@ public abstract class RecipesGuiInputHandlerMixin {
         var accessor = (RecipesGuiAccessor) (Object) recipesGui;
         var previous = accessor.jeiPlusPlus$getPreviousPage();
         var next = accessor.jeiPlusPlus$getNextPage();
-        int left = previous.getX() - 10;
-        int right = next.getX() + next.getWidth() + 10;
-        int top = Math.min(previous.getY(), next.getY()) - 8;
-        int bottom = Math.max(previous.getY() + previous.getHeight(), next.getY() + next.getHeight()) + 8;
+        int left = previous.getX() - 20;
+        int right = next.getX() + next.getWidth() + 20;
+        int top = Math.min(previous.getY(), next.getY()) - 18;
+        int bottom = Math.max(previous.getY() + previous.getHeight(), next.getY() + next.getHeight()) + 18;
         return mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom;
     }
 }
