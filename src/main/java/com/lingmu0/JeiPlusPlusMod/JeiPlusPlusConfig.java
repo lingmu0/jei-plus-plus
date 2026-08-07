@@ -13,6 +13,16 @@ public final class JeiPlusPlusConfig {
             .comment("When JEI prioritizes bookmarked recipes, bookmark the recipe under the cursor instead of the ingredient.")
             .define("preferBookmarkedRecipeOnIngredientBookmark", true);
 
+    public static final ForgeConfigSpec.BooleanValue CREATIVE_TAB_BAR_ENABLED =
+        BUILDER
+            .comment("Show a creative-mode item tab bar above JEI's ingredient list.")
+            .define("creativeTabBarEnabled", true);
+
+    public static final ForgeConfigSpec.BooleanValue STACK_GROUPING_ENABLED =
+        BUILDER
+            .comment("Collapse related item variants in JEI's ingredient list. Click a group to expand it.")
+            .define("stackGroupingEnabled", true);
+
     public static final ForgeConfigSpec SPEC = BUILDER.build();
 
     private JeiPlusPlusConfig() {

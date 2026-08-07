@@ -12,7 +12,9 @@
     "BookmarkInputHandlerMixin",
     "RecipeGuiTabsMixin",
     "RecipesGuiAccessor",
-    "RecipeGuiLayoutsAccessor"
+    "RecipeGuiLayoutsAccessor",
+    "IngredientFilterMixin",
+    "IngredientGridWithNavigationMixin"
   ],
   "injectors": {
     "defaultRequire": 1

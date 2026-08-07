@@ -1,3 +1,5 @@
 {
-  "jei_plus_plus.category.ingredient_directory": "Ingredient directory"
+  "jei_plus_plus.category.ingredient_directory": "Ingredient directory",
+  "jei_plus_plus.creative_tab.all": "All items",
+  "jei_plus_plus.group.tooltip": "%s (%s items)"
 }
