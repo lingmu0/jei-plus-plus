@@ -55,11 +55,11 @@ public abstract class RecipesGuiMixin {
     }
 
     private boolean insidePageRow(double mouseX, double mouseY) {
-        int left = previousPage.getX() - 8;
-        int right = nextPage.getX() + nextPage.getWidth() + 8;
-        int top = Math.min(previousPage.getY(), nextPage.getY()) - 6;
+        int left = previousPage.getX() - 20;
+        int right = nextPage.getX() + nextPage.getWidth() + 20;
+        int top = Math.min(previousPage.getY(), nextPage.getY()) - 18;
         int bottom = Math.max(previousPage.getY() + previousPage.getHeight(),
-            nextPage.getY() + nextPage.getHeight()) + 6;
+            nextPage.getY() + nextPage.getHeight()) + 18;
         return mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom;
     }
 }
