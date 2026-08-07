@@ -23,6 +23,7 @@ import net.minecraft.world.item.ItemStack;
 import com.lingmu0.JeiPlusPlusMod.client.recipe_tree.RecipeTreeInputViewModel;
 import com.lingmu0.JeiPlusPlusMod.client.recipe_tree.RecipeTreeInputViewModel.DisplayOption;
 import com.lingmu0.JeiPlusPlusMod.client.recipe_tree.RecipeTreeRecipeViewModel;
+import com.lingmu0.JeiPlusPlusMod.client.recipe_tree.RecipeTreeRequestedIngredient;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -165,7 +166,9 @@ public final class RecipeTreeJeiLookup {
             int inputAmount = ingredients == null || displayed == null ? displayedStack(slot).getCount()
                     : amount(ingredients, displayed, Math.max(1, displayedStack(slot).getCount()));
             inputAmount = Math.max(1, inputAmount);
-            inputs.add(new RecipeTreeInputViewModel(options, inputAmount, formatAmount(slot, inputAmount)));
+            RecipeTreeRequestedIngredient requested = new RecipeTreeRequestedIngredient(
+                    slot.getItemStacks().map(ItemStack::copy).toList(), inputAmount);
+            inputs.add(new RecipeTreeInputViewModel(requested, options, inputAmount, formatAmount(slot, inputAmount)));
         }
         if (title == null || title.getString().isBlank()) {
             title = primaryOutputIngredient == null ? Component.translatable("jei_plus_plus.recipe_tree.unknown")
