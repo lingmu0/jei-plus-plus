@@ -17,6 +17,36 @@ sourceSets.main.resources {
     srcDir('src/generated/resources')
 }
 
+// NeoGradle's run definitions are also consumed by IntelliJ's Gradle sync to
+// create the *IdeBeforeRun tasks used by NeoForge launch configurations.
+runs {
+    configureEach {
+        systemProperty 'forge.logging.markers', 'REGISTRIES'
+        systemProperty 'forge.logging.console.level', 'debug'
+        workingDirectory project.layout.projectDirectory.dir('runs').dir(name)
+        modSource project.sourceSets.main
+    }
+
+    client {
+        systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+    }
+
+    server {
+        systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        programArgument '--nogui'
+    }
+
+    gameTestServer {
+        systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+    }
+
+    data {
+        programArguments '--mod', project.mod_id, '--all', '--output',
+                file('src/generated/resources').getAbsolutePath(), '--existing',
+                file('src/main/resources').getAbsolutePath()
+    }
+}
+
 repositories {
     maven { url = 'https://maven.blamejared.com' }
 }
@@ -27,6 +57,9 @@ configurations {
 
 dependencies {
     implementation "net.neoforged:neoforge:${neo_version}"
+    // The userdev artifact intentionally omits NeoForge's runtime-only config
+    // helpers; keep the universal jar compile-only for the config spec API.
+    compileOnly "net.neoforged:neoforge:${neo_version}:universal"
 
     // The full JEI jar supplies the public API and the isolated client mixin targets.
     compileOnly "mezz.jei:jei-1.21.1-neoforge:${jei_version}"
@@ -38,6 +71,9 @@ tasks.withType(ProcessResources).configureEach {
         minecraft_version: minecraft_version,
         minecraft_version_range: minecraft_version_range,
         neo_version: neo_version,
+        neo_version_range: neo_version_range,
+        jei_version: jei_version,
+        jei_version_range: jei_version_range,
         loader_version_range: loader_version_range,
         mod_id: mod_id,
         mod_name: mod_name,
@@ -54,4 +90,8 @@ tasks.withType(ProcessResources).configureEach {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+    // NeoGradle 7.0.x exposes the named, merged Minecraft jar through the
+    // neoForm rename task rather than the default raw userdev artifact.
+    dependsOn tasks.named('neoFormRename')
+    classpath += files(tasks.named('neoFormRename'))
 }
