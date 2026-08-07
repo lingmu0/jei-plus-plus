@@ -16,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class RecipeLayoutWithButtonsMixin {
     @Shadow @Final private IRecipeLayoutDrawable<?> recipeLayout;
 
-    @Inject(method = "createUserInputHandler", at = @At("RETURN"), remap = false)
+    @Inject(method = "createUserInputHandler", at = @At("RETURN"), cancellable = true, remap = false)
     private void jeiPlusPlus$wrapTreeInput(CallbackInfoReturnable<IUserInputHandler> cir) {
         cir.setReturnValue(RecipeTreeInputHandler.wrap(cir.getReturnValue(), recipeLayout));
     }
