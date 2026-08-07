@@ -49,8 +49,8 @@ public final class RecipeTreeInputHandler implements IUserInputHandler {
     }
 
     @Override
-    public Optional<IUserInputHandler> handleMouseScrolled(double mouseX, double mouseY, double scrollDelta) {
-        return delegate.handleMouseScrolled(mouseX, mouseY, scrollDelta)
+    public Optional<IUserInputHandler> handleMouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        return delegate.handleMouseScrolled(mouseX, mouseY, scrollX, scrollY)
                 .map(ignored -> (IUserInputHandler) this);
     }
 

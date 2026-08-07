@@ -69,7 +69,7 @@ public final class RecipeTreeRecipeViewModel {
         if (recipeId != null && other.recipeId != null) {
             return recipeId.equals(other.recipeId);
         }
-        return ItemStack.isSameItemSameTags(primaryOutput, other.primaryOutput)
+        return ItemStack.isSameItem(primaryOutput, other.primaryOutput)
                 && title.getString().equals(other.title.getString());
     }
 }

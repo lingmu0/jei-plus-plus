@@ -90,7 +90,7 @@ public final class RecipeTreeScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics);
+        renderBackground(graphics, mouseX, mouseY, partialTick);
         rebuildRows();
         graphics.fill(leftPos, topPos, leftPos + PANEL_WIDTH, topPos + PANEL_HEIGHT, 0xE8101018);
         graphics.fill(leftPos, topPos, leftPos + PANEL_WIDTH, topPos + HEADER_HEIGHT, 0xFF25253A);
@@ -274,16 +274,16 @@ public final class RecipeTreeScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double scrollDelta) {
-        if (scrollDelta == 0) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (scrollY == 0) {
             return false;
         }
         if (pendingInput != null) {
-            selectionScroll = clamp(selectionScroll - (int) Math.signum(scrollDelta) * SELECTION_CARD_HEIGHT,
+            selectionScroll = clamp(selectionScroll - (int) Math.signum(scrollY) * SELECTION_CARD_HEIGHT,
                     0, Math.max(0, candidates.size() * SELECTION_CARD_HEIGHT - (PANEL_HEIGHT - 40)));
             return true;
         }
-        treeScroll = clamp(treeScroll - (int) Math.signum(scrollDelta) * INPUT_HEIGHT, 0,
+        treeScroll = clamp(treeScroll - (int) Math.signum(scrollY) * INPUT_HEIGHT, 0,
                 Math.max(0, contentHeight - viewHeight()));
         return true;
     }

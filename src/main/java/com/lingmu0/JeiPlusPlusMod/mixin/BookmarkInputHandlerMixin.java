@@ -88,6 +88,6 @@ public abstract class BookmarkInputHandlerMixin {
             return null;
         }
         ITypedIngredient<?> normalized = runtime.getIngredientManager().normalizeTypedIngredient(output.get());
-        return new RecipeBookmark(layout.getRecipeCategory(), layout.getRecipe(), recipeUid, normalized);
+        return new RecipeBookmark(layout.getRecipeCategory(), layout.getRecipe(), recipeUid, normalized, true);
     }
 }
