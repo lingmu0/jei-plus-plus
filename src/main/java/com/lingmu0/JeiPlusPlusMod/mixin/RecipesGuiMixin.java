@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Makes the two JEI navigation rows independently mouse-wheel aware. */
+/** Makes both JEI navigation rows and the page-number band wheel-aware. */
 @Mixin(value = RecipesGui.class, remap = false)
 public abstract class RecipesGuiMixin {
     @Shadow @Final private IRecipeGuiLogic logic;
@@ -27,7 +27,7 @@ public abstract class RecipesGuiMixin {
         double scrollY,
         CallbackInfoReturnable<Boolean> cir
     ) {
-        if (scrollY == 0 || !insideBand(mouseX, mouseY, previousPage, nextPage)) {
+        if (scrollY == 0 || !insidePageRow(mouseX, mouseY)) {
             if (scrollY != 0 && insideBand(mouseX, mouseY, previousRecipeCategory, nextRecipeCategory)) {
                 if (scrollY < 0) {
                     logic.nextRecipeCategory();
@@ -38,7 +38,6 @@ public abstract class RecipesGuiMixin {
             }
             return;
         }
-
         if (scrollY < 0) {
             logic.nextPage();
         } else {
@@ -53,5 +52,14 @@ public abstract class RecipesGuiMixin {
         int top = left.getY() - 2;
         int bottom = left.getY() + left.getHeight() + 2;
         return mouseX >= leftEdge && mouseX <= rightEdge && mouseY >= top && mouseY <= bottom;
+    }
+
+    private boolean insidePageRow(double mouseX, double mouseY) {
+        int left = previousPage.getX() - 8;
+        int right = nextPage.getX() + nextPage.getWidth() + 8;
+        int top = Math.min(previousPage.getY(), nextPage.getY()) - 6;
+        int bottom = Math.max(previousPage.getY() + previousPage.getHeight(),
+            nextPage.getY() + nextPage.getHeight()) + 6;
+        return mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom;
     }
 }
