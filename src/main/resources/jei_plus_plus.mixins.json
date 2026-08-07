@@ -8,7 +8,11 @@
   "client": [
     "RecipeGuiLayoutsMixin",
     "RecipesGuiMixin",
-    "RecipeBookmarkElementMixin"
+    "RecipeBookmarkElementMixin",
+    "BookmarkInputHandlerMixin",
+    "RecipeGuiTabsMixin",
+    "RecipesGuiAccessor",
+    "RecipeGuiLayoutsAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

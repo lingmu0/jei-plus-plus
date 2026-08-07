@@ -12,6 +12,6 @@ public final class JeiPlusPlus {
     public static final String MODID = "jei_plus_plus";
 
     public JeiPlusPlus() {
-        // JEI discovers the @JeiPlugin class on the client when JEI is present.
+        JeiPlusPlusConfig.register();
     }
 }
