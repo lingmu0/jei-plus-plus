@@ -26,7 +26,7 @@ public abstract class RecipesGuiMixin {
         double scrollDelta,
         CallbackInfoReturnable<Boolean> cir
     ) {
-        if (scrollDelta == 0 || !insideBand(mouseX, mouseY, previousPage, nextPage)) {
+        if (scrollDelta == 0 || !insidePageRow(mouseX, mouseY)) {
             if (scrollDelta != 0 && insideBand(mouseX, mouseY, previousRecipeCategory, nextRecipeCategory)) {
                 if (scrollDelta < 0) {
                     logic.nextRecipeCategory();
@@ -52,5 +52,19 @@ public abstract class RecipesGuiMixin {
         int top = left.getY() - 2;
         int bottom = left.getY() + left.getHeight() + 2;
         return mouseX >= leftEdge && mouseX <= rightEdge && mouseY >= top && mouseY <= bottom;
+    }
+
+    /**
+     * The page number is rendered between the two page arrows, but it is not a
+     * widget itself.  Treat the whole second navigation row as a page control
+     * so a wheel event over the number advances one complete JEI page.
+     */
+    private boolean insidePageRow(double mouseX, double mouseY) {
+        int left = previousPage.getX() - 8;
+        int right = nextPage.getX() + nextPage.getWidth() + 8;
+        int top = Math.min(previousPage.getY(), nextPage.getY()) - 6;
+        int bottom = Math.max(previousPage.getY() + previousPage.getHeight(),
+            nextPage.getY() + nextPage.getHeight()) + 6;
+        return mouseX >= left && mouseX <= right && mouseY >= top && mouseY <= bottom;
     }
 }

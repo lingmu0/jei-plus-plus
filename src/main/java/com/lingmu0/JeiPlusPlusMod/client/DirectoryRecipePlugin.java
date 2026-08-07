@@ -5,6 +5,7 @@ import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.helpers.IGuiHelper;
 import mezz.jei.api.registration.IRecipeCategoryRegistration;
 import mezz.jei.api.registration.IRecipeRegistration;
+import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.resources.ResourceLocation;
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlus;
 
@@ -12,6 +13,7 @@ import com.lingmu0.JeiPlusPlusMod.JeiPlusPlus;
 @JeiPlugin
 public final class DirectoryRecipePlugin implements IModPlugin {
     private static volatile DirectoryRecipeCategory category;
+    private static volatile IJeiRuntime jeiRuntime;
 
     @Override
     public ResourceLocation getPluginUid() {
@@ -32,5 +34,20 @@ public final class DirectoryRecipePlugin implements IModPlugin {
 
     public static DirectoryRecipeCategory getCategory() {
         return category;
+    }
+
+    /** Runtime access shared by the recipe-tree lookup and screen. */
+    public static IJeiRuntime getJeiRuntime() {
+        return jeiRuntime;
+    }
+
+    @Override
+    public void onRuntimeAvailable(IJeiRuntime runtime) {
+        jeiRuntime = runtime;
+    }
+
+    @Override
+    public void onRuntimeUnavailable() {
+        jeiRuntime = null;
     }
 }

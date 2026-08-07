@@ -3,6 +3,7 @@ package com.lingmu0.JeiPlusPlusMod.mixin;
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
 import mezz.jei.api.gui.IRecipeLayoutDrawable;
 import mezz.jei.api.gui.inputs.RecipeSlotUnderMouse;
+import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.common.Internal;
 import mezz.jei.common.config.RecipeSorterStage;
@@ -22,6 +23,8 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import net.minecraft.resources.ResourceLocation;
+import mezz.jei.api.recipe.RecipeIngredientRole;
 
 import java.util.Optional;
 
@@ -57,8 +60,17 @@ public abstract class BookmarkInputHandlerMixin {
                 continue;
             }
 
+            // Input slots must keep JEI's normal ingredient bookmark behavior.
+            // The recipe bookmark preference only applies when the hovered slot is
+            // an output slot.
+            if (slotUnderMouse.get().slot().getRole() != RecipeIngredientRole.OUTPUT) {
+                return;
+            }
+
             Optional<? extends RecipeBookmark<?, ?>> recipeBookmark =
-                RecipeBookmark.create(layout, runtime.getIngredientManager());
+                createBookmarkForHoveredOutput(layout, slotUnderMouse.get().slot().getDisplayedIngredient()
+                    .or(() -> slotUnderMouse.get().slot().getAllIngredients().findFirst()),
+                    runtime);
             if (recipeBookmark.isEmpty()) {
                 continue;
             }
@@ -70,5 +82,24 @@ public abstract class BookmarkInputHandlerMixin {
             cir.setReturnValue(Optional.of(new SameElementInputHandler(currentHandler, layout::isMouseOver)));
             return;
         }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static Optional<? extends RecipeBookmark<?, ?>> createBookmarkForHoveredOutput(
+        IRecipeLayoutDrawable<?> layout,
+        Optional<ITypedIngredient<?>> output,
+        IJeiRuntime runtime
+    ) {
+        if (output.isEmpty()) {
+            return Optional.empty();
+        }
+        ResourceLocation recipeUid = ((mezz.jei.api.recipe.category.IRecipeCategory) layout.getRecipeCategory())
+            .getRegistryName(layout.getRecipe());
+        if (recipeUid == null) {
+            return Optional.empty();
+        }
+        ITypedIngredient<?> normalized = runtime.getIngredientManager().normalizeTypedIngredient(output.get());
+        return (Optional) Optional.of(new RecipeBookmark(
+            layout.getRecipeCategory(), layout.getRecipe(), recipeUid, normalized));
     }
 }

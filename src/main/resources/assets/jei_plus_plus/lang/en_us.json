@@ -1,3 +1,12 @@
 {
-  "jei_plus_plus.category.ingredient_directory": "Ingredient directory"
+  "jei_plus_plus.category.ingredient_directory": "Ingredient directory",
+  "jei_plus_plus.recipe_tree.title": "JEI Recipe Tree",
+  "jei_plus_plus.recipe_tree.back": "Back",
+  "jei_plus_plus.recipe_tree.select": "Select recipe",
+  "jei_plus_plus.recipe_tree.clear": "Clear",
+  "jei_plus_plus.recipe_tree.alternative": "Alt",
+  "jei_plus_plus.recipe_tree.no_recipes": "No recipes found",
+  "jei_plus_plus.recipe_tree.root": "Recipe tree",
+  "jei_plus_plus.recipe_tree.unknown": "Unknown recipe",
+  "jei_plus_plus.recipe_tree.open_hint": "Hold Alt and left-click a JEI recipe to open its tree"
 }
