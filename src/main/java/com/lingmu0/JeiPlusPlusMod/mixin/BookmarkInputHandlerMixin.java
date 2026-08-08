@@ -7,6 +7,7 @@ import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.common.Internal;
+import mezz.jei.common.config.IClientConfig;
 import mezz.jei.common.config.RecipeSorterStage;
 import mezz.jei.common.input.IInternalKeyMappings;
 import mezz.jei.gui.bookmarks.BookmarkList;
@@ -26,6 +27,9 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.lang.reflect.Method;
+import java.util.Collection;
+
 /** Uses the preferred recipe only for output-slot bookmarks. */
 @Mixin(value = BookmarkInputHandler.class, remap = false)
 public abstract class BookmarkInputHandlerMixin {
@@ -38,7 +42,7 @@ public abstract class BookmarkInputHandlerMixin {
         CallbackInfoReturnable<java.util.Optional<IUserInputHandler>> cir
     ) {
         if (!JeiPlusPlusConfig.PREFER_BOOKMARKED_RECIPE_ON_INGREDIENT_BOOKMARK.get()
-            || !RecipeSorterStage.BOOKMARKED.isEnabled(Internal.getJeiClientConfigs().getClientConfig())) {
+            || !isBookmarkedRecipeSortingEnabled()) {
             return;
         }
         IJeiRuntime runtime = Internal.getJeiRuntime();
@@ -89,5 +93,29 @@ public abstract class BookmarkInputHandlerMixin {
         }
         ITypedIngredient<?> normalized = runtime.getIngredientManager().normalizeTypedIngredient(output.get());
         return new RecipeBookmark(layout.getRecipeCategory(), layout.getRecipe(), recipeUid, normalized, true);
+    }
+
+    /**
+     * JEI 19.38+ exposes RecipeSorterStage#isEnabled, while older JEI versions
+     * expose the same setting through IClientConfig#getRecipeSorterStages.
+     * Resolve the accessor at runtime so one build works with both APIs.
+     */
+    private static boolean isBookmarkedRecipeSortingEnabled() {
+        IClientConfig clientConfig = Internal.getJeiClientConfigs().getClientConfig();
+        try {
+            Method isEnabled = RecipeSorterStage.class.getMethod("isEnabled", IClientConfig.class);
+            return Boolean.TRUE.equals(isEnabled.invoke(RecipeSorterStage.BOOKMARKED, clientConfig));
+        } catch (NoSuchMethodException ignored) {
+            try {
+                Method getRecipeSorterStages = IClientConfig.class.getMethod("getRecipeSorterStages");
+                Object stages = getRecipeSorterStages.invoke(clientConfig);
+                return stages instanceof Collection<?> collection
+                    && collection.contains(RecipeSorterStage.BOOKMARKED);
+            } catch (ReflectiveOperationException ignoredOldApi) {
+                return false;
+            }
+        } catch (ReflectiveOperationException ignoredNewApi) {
+            return false;
+        }
     }
 }
