@@ -13,20 +13,16 @@ import mezz.jei.api.ingredients.IIngredientRenderer;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.runtime.IRecipesGui;
 import mezz.jei.common.input.IInternalKeyMappings;
-import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.input.UserInput;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.core.registries.BuiltInRegistries;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -41,53 +37,6 @@ import com.mojang.blaze3d.platform.InputConstants;
  * rendering and recipe lookups.
  */
 public final class IngredientListFeatures {
-    private static final List<GroupDefinition> GROUP_DEFINITIONS = List.of(
-        new GroupDefinition("wool", "_wool"),
-        new GroupDefinition("carpet", "_carpet"),
-        new GroupDefinition("concrete", "_concrete"),
-        new GroupDefinition("concrete_powder", "_concrete_powder"),
-        new GroupDefinition("terracotta", "_terracotta"),
-        new GroupDefinition("glazed_terracotta", "_glazed_terracotta"),
-        new GroupDefinition("stained_glass", "_stained_glass"),
-        new GroupDefinition("stained_glass_pane", "_stained_glass_pane"),
-        new GroupDefinition("candle", "_candle"),
-        new GroupDefinition("bed", "_bed"),
-        new GroupDefinition("banner", "_banner"),
-        new GroupDefinition("shulker_box", "_shulker_box"),
-        new GroupDefinition("planks", "_planks"),
-        new GroupDefinition("logs", "_log"),
-        new GroupDefinition("wood", "_wood"),
-        new GroupDefinition("stripped_logs", "_stripped_log"),
-        new GroupDefinition("slab", "_slab"),
-        new GroupDefinition("stairs", "_stairs"),
-        new GroupDefinition("wall", "_wall"),
-        new GroupDefinition("fence", "_fence"),
-        new GroupDefinition("fence_gate", "_fence_gate"),
-        new GroupDefinition("door", "_door"),
-        new GroupDefinition("trapdoor", "_trapdoor"),
-        new GroupDefinition("button", "_button"),
-        new GroupDefinition("pressure_plate", "_pressure_plate"),
-        new GroupDefinition("glass", "_glass"),
-        new GroupDefinition("pane", "_pane"),
-        new GroupDefinition("ore", "_ore"),
-        new GroupDefinition("raw_material", "_raw"),
-        new GroupDefinition("ingot", "_ingot"),
-        new GroupDefinition("nugget", "_nugget"),
-        new GroupDefinition("sword", "_sword"),
-        new GroupDefinition("pickaxe", "_pickaxe"),
-        new GroupDefinition("axe", "_axe"),
-        new GroupDefinition("shovel", "_shovel"),
-        new GroupDefinition("hoe", "_hoe"),
-        new GroupDefinition("boat", "_boat"),
-        new GroupDefinition("sapling", "_sapling"),
-        new GroupDefinition("seed", "_seeds"),
-        new GroupDefinition("flower", "_flower"),
-        new GroupDefinition("leaves", "_leaves"),
-        new GroupDefinition("rail", "_rail"),
-        new GroupDefinition("sign", "_sign"),
-        new GroupDefinition("hanging_sign", "_hanging_sign")
-    );
-
     private IngredientListFeatures() {
     }
 
@@ -129,15 +78,24 @@ public final class IngredientListFeatures {
         IngredientListFeatureSource source,
         List<IElement<?>> original
     ) {
+        List<StackGroupManager.GroupDefinition> definitions = StackGroupManager.getDefinitions();
         Map<String, GroupBuilder> groups = new LinkedHashMap<>();
         Map<Integer, String> groupAtIndex = new LinkedHashMap<>();
         for (int i = 0; i < original.size(); i++) {
             IElement<?> element = original.get(i);
-            String key = getGroupKey(element.getTypedIngredient());
-            if (key == null) {
+            Optional<ItemStack> stack = element.getTypedIngredient().getItemStack();
+            if (stack.isEmpty()) {
                 continue;
             }
-            GroupBuilder builder = groups.computeIfAbsent(key, ignored -> new GroupBuilder(key));
+            StackGroupManager.Match match = StackGroupManager.findMatch(stack.get(), definitions);
+            if (match == null) {
+                continue;
+            }
+            String key = match.key();
+            GroupBuilder builder = groups.computeIfAbsent(
+                key,
+                ignored -> new GroupBuilder(key, match.label())
+            );
             builder.elements.add(element);
             groupAtIndex.putIfAbsent(i, key);
         }
@@ -170,10 +128,10 @@ public final class IngredientListFeatures {
                 // Keep a group control in the list while expanded.  This is
                 // the collapse affordance; without it the original group
                 // element disappears and the user can only expand once.
-                result.add(new GroupedIngredientElement(source, key, group.elements, true));
+                result.add(new GroupedIngredientElement(source, key, group.label, group.elements, true));
                 result.addAll(group.elements);
             } else {
-                result.add(new GroupedIngredientElement(source, key, group.elements, false));
+                result.add(new GroupedIngredientElement(source, key, group.label, group.elements, false));
             }
         }
         return List.copyOf(result);
@@ -186,38 +144,12 @@ public final class IngredientListFeatures {
         return source instanceof IngredientListExpansionState state && state.jeiPlusPlus$isGroupExpanded(key);
     }
 
-    @Nullable
-    private static String getGroupKey(ITypedIngredient<?> typedIngredient) {
-        ItemStack stack = typedIngredient.getItemStack().orElse(ItemStack.EMPTY);
-        if (stack.isEmpty()) {
-            return null;
-        }
-        ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
-        if (id == null) {
-            return null;
-        }
-        String path = id.getPath().toLowerCase(Locale.ROOT);
-        for (GroupDefinition definition : GROUP_DEFINITIONS) {
-            if (path.endsWith(definition.suffix)) {
-                return id.getNamespace() + ":" + definition.name;
-            }
-        }
-        // Several vanilla families use a prefix rather than a suffix.
-        if (path.startsWith("stripped_") && path.endsWith("_wood")) {
-            return id.getNamespace() + ":stripped_wood";
-        }
-        return null;
-    }
-
-    private record GroupDefinition(String name, String suffix) {
-    }
-
     private static final class GroupBuilder {
-        private final String key;
+        private final Component label;
         private final List<IElement<?>> elements = new ArrayList<>();
 
-        private GroupBuilder(String key) {
-            this.key = key;
+        private GroupBuilder(String key, Component label) {
+            this.label = label;
         }
     }
 
@@ -231,18 +163,21 @@ public final class IngredientListFeatures {
     public static final class GroupedIngredientElement extends IngredientElement<Object> {
         private final IngredientListFeatureSource source;
         private final String groupKey;
+        private final Component label;
         private final List<IElement<?>> elements;
         private final boolean expanded;
 
         private GroupedIngredientElement(
             IngredientListFeatureSource source,
             String groupKey,
+            Component label,
             List<IElement<?>> elements,
             boolean expanded
         ) {
             super((ITypedIngredient<Object>) (ITypedIngredient) elements.get(0).getTypedIngredient());
             this.source = source;
             this.groupKey = groupKey;
+            this.label = label;
             this.elements = List.copyOf(elements);
             this.expanded = expanded;
         }
@@ -270,7 +205,6 @@ public final class IngredientListFeatures {
             IIngredientRenderer<Object> ingredientRenderer,
             IIngredientHelper<Object> ingredientHelper
         ) {
-            String label = groupKey.substring(groupKey.indexOf(':') + 1).replace('_', ' ');
             tooltip.add(Component.translatable("jei_plus_plus.group.tooltip", label, elements.size()));
             super.getTooltip(tooltip, tooltipHelper, ingredientRenderer, ingredientHelper);
         }
