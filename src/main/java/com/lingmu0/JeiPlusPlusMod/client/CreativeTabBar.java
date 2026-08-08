@@ -91,6 +91,11 @@ public final class CreativeTabBar {
         // than fit in one row.  Scrolling over the strip cycles through them.
         if (total > capacity) {
             String hint = (selected + 1) + "/" + total;
+            var pose = guiGraphics.pose();
+            pose.pushPose();
+            // Item icons are rendered with depth enabled.  Keep the page
+            // number in the same high overlay layer as grouped-stack counts.
+            pose.translate(0.0D, 0.0D, 300.0D);
             guiGraphics.drawString(
                 Minecraft.getInstance().font,
                 hint,
@@ -99,6 +104,7 @@ public final class CreativeTabBar {
                 0xFFFFFFFF,
                 true
             );
+            pose.popPose();
         }
     }
 
