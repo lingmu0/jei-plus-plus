@@ -11,6 +11,8 @@ base {
     archivesName = mod_id
 }
 
+def bootstrapIgnoreList = 'bootstraplauncher-2.0.2.jar,securejarhandler-3.0.8.jar,JarJarFileSystems-0.4.1.jar,asm-9.5.jar,asm-commons-9.5.jar,asm-analysis-9.5.jar,asm-tree-9.5.jar,asm-util-9.5.jar,asm-9.8.jar,asm-commons-9.8.jar,asm-analysis-9.8.jar,asm-tree-9.8.jar,asm-util-9.8.jar,mixinextras-neoforge-0.5.3.jar,client-extra,neoforge-'
+
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
 sourceSets.main.resources {
@@ -23,6 +25,12 @@ runs {
     configureEach {
         systemProperty 'forge.logging.markers', 'REGISTRIES'
         systemProperty 'forge.logging.console.level', 'debug'
+        // NeoForge 21.1.x places ASM 9.8 on the BootstrapLauncher module path,
+        // while the Minecraft library manifest still contains older ASM 9.5
+        // copies.  Leaving those old copies on the legacy class path makes
+        // both Gradle runClient and IntelliJ's generated launch fail with a
+        // duplicate-module error before the game starts.
+        systemProperty 'ignoreList', bootstrapIgnoreList
         workingDirectory project.layout.projectDirectory.dir('runs').dir(name)
         modSource project.sourceSets.main
     }
@@ -44,6 +52,15 @@ runs {
         programArguments '--mod', project.mod_id, '--all', '--output',
                 file('src/generated/resources').getAbsolutePath(), '--existing',
                 file('src/main/resources').getAbsolutePath()
+    }
+}
+
+// Userdev adds its default ignore list during its after-evaluate hook. Apply
+// the corrected list after that hook as well, so Gradle and regenerated IDEA
+// configurations receive the same BootstrapLauncher arguments.
+afterEvaluate {
+    runs.configureEach {
+        systemProperty 'ignoreList', bootstrapIgnoreList
     }
 }
 
