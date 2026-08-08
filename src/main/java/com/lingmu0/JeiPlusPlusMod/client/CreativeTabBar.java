@@ -19,10 +19,16 @@ import java.util.Optional;
 /** Compact creative-tab strip rendered over the top of JEI's ingredient list. */
 public final class CreativeTabBar {
     private static final int HEIGHT = 18;
+    private static final int RESERVED_HEIGHT = HEIGHT + 1;
     private static final int TAB_WIDTH = 18;
     private static final int MAX_VISIBLE_TABS = 12;
 
     private CreativeTabBar() {
+    }
+
+    /** Space reserved above the ingredient grid for the tab strip. */
+    public static int getReservedHeight() {
+        return RESERVED_HEIGHT;
     }
 
     public static ImmutableRect2i getArea(ImmutableRect2i backgroundArea, ImmutableRect2i navigationArea) {
@@ -32,7 +38,7 @@ public final class CreativeTabBar {
         int x = backgroundArea.getX();
         int width = backgroundArea.getWidth();
         int y = navigationArea.isEmpty()
-            ? backgroundArea.getY()
+            ? Math.max(2, backgroundArea.getY() - RESERVED_HEIGHT)
             : Math.max(2, navigationArea.getY() - HEIGHT - 1);
         return new ImmutableRect2i(x, y, width, HEIGHT);
     }

@@ -167,9 +167,13 @@ public final class IngredientListFeatures {
             }
             GroupBuilder group = groups.get(key);
             if (sourceIsExpanded(source, key)) {
+                // Keep a group control in the list while expanded.  This is
+                // the collapse affordance; without it the original group
+                // element disappears and the user can only expand once.
+                result.add(new GroupedIngredientElement(source, key, group.elements, true));
                 result.addAll(group.elements);
             } else {
-                result.add(new GroupedIngredientElement(source, key, group.elements));
+                result.add(new GroupedIngredientElement(source, key, group.elements, false));
             }
         }
         return List.copyOf(result);
@@ -228,16 +232,19 @@ public final class IngredientListFeatures {
         private final IngredientListFeatureSource source;
         private final String groupKey;
         private final List<IElement<?>> elements;
+        private final boolean expanded;
 
         private GroupedIngredientElement(
             IngredientListFeatureSource source,
             String groupKey,
-            List<IElement<?>> elements
+            List<IElement<?>> elements,
+            boolean expanded
         ) {
             super((ITypedIngredient<Object>) (ITypedIngredient) elements.get(0).getTypedIngredient());
             this.source = source;
             this.groupKey = groupKey;
             this.elements = List.copyOf(elements);
+            this.expanded = expanded;
         }
 
         @Override
@@ -270,15 +277,17 @@ public final class IngredientListFeatures {
 
         @Override
         public @Nullable IDrawable createRenderOverlay() {
-            return new GroupCountOverlay(elements.size());
+            return new GroupCountOverlay(elements.size(), expanded);
         }
     }
 
     private static final class GroupCountOverlay implements IDrawable {
         private final int count;
+        private final boolean expanded;
 
-        private GroupCountOverlay(int count) {
+        private GroupCountOverlay(int count, boolean expanded) {
             this.count = count;
+            this.expanded = expanded;
         }
 
         @Override
@@ -293,15 +302,14 @@ public final class IngredientListFeatures {
 
         @Override
         public void draw(GuiGraphics guiGraphics, int xOffset, int yOffset) {
-            String label = "+" + count;
-            guiGraphics.drawString(
-                Minecraft.getInstance().font,
-                label,
-                xOffset + 1,
-                yOffset + 8,
-                0xFFFFFFFF,
-                true
-            );
+            String label = (expanded ? "-" : "+") + count;
+            var pose = guiGraphics.pose();
+            pose.pushPose();
+            // JEI renders item stacks with depth enabled.  Put the count in
+            // a higher pose layer so it cannot be hidden by the icon below.
+            pose.translate(0.0D, 0.0D, 300.0D);
+            guiGraphics.drawString(Minecraft.getInstance().font, label, xOffset + 1, yOffset + 8, 0xFFFFFFFF, true);
+            pose.popPose();
         }
     }
 }

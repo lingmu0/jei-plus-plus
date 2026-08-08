@@ -20,6 +20,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
 import java.util.Optional;
 
@@ -31,6 +32,15 @@ public abstract class IngredientGridWithNavigationMixin {
 
     @Shadow
     public abstract ImmutableRect2i getBackButtonArea();
+
+    /** Reserve the row used by the creative-tab strip so it never overlaps JEI. */
+    @ModifyVariable(method = "updateBounds", at = @At("HEAD"), argsOnly = true, ordinal = 0, remap = false)
+    private ImmutableRect2i jeiPlusPlus$reserveCreativeTabRow(ImmutableRect2i availableArea) {
+        if (jeiPlusPlus$getFeatureSource() == null || !JeiPlusPlusConfig.CREATIVE_TAB_BAR_ENABLED.get()) {
+            return availableArea;
+        }
+        return availableArea.cropTop(CreativeTabBar.getReservedHeight());
+    }
 
     @Inject(method = "draw", at = @At("TAIL"), remap = false)
     private void jeiPlusPlus$drawCreativeTabs(
