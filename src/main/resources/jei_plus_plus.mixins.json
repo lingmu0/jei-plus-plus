@@ -7,14 +7,19 @@
   "mixins": [],
   "client": [
     "RecipeGuiLayoutsMixin",
+    "RecipeLayoutWithButtonsMixin",
     "RecipesGuiMixin",
     "RecipeBookmarkElementMixin",
     "BookmarkInputHandlerMixin",
+    "BookmarkListAccessor",
+    "BookmarkListMixin",
+    "BookmarkOverlayMixin",
     "RecipeGuiTabsMixin",
     "RecipesGuiAccessor",
     "RecipeGuiLayoutsAccessor",
     "IngredientFilterMixin",
-    "IngredientGridWithNavigationMixin"
+    "IngredientGridWithNavigationMixin",
+    "AbstractContainerScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1

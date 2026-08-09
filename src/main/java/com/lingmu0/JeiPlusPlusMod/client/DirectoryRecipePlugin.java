@@ -5,6 +5,7 @@ import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.helpers.IGuiHelper;
 import mezz.jei.api.registration.IRecipeCategoryRegistration;
 import mezz.jei.api.registration.IRecipeRegistration;
+import mezz.jei.api.registration.IAdvancedRegistration;
 import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.resources.ResourceLocation;
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlus;
@@ -23,6 +24,7 @@ public final class DirectoryRecipePlugin implements IModPlugin {
     @Override
     public void registerCategories(IRecipeCategoryRegistration registration) {
         IGuiHelper guiHelper = registration.getJeiHelpers().getGuiHelper();
+        RecipeTreeIcons.initialize(guiHelper);
         category = new DirectoryRecipeCategory(guiHelper);
         registration.addRecipeCategories(category);
     }
@@ -30,6 +32,13 @@ public final class DirectoryRecipePlugin implements IModPlugin {
     @Override
     public void registerRecipes(IRecipeRegistration registration) {
         // Directory recipes are supplied on demand through IRecipesGui.showRecipes.
+    }
+
+    @Override
+    public void registerAdvanced(IAdvancedRegistration registration) {
+        IGuiHelper guiHelper = registration.getJeiHelpers().getGuiHelper();
+        registration.addRecipeButtonFactory(new RecipeTreeButtonFactory(guiHelper));
+        registration.addRecipeButtonFactory(new RecipeDefaultButtonFactory(guiHelper));
     }
 
     public static DirectoryRecipeCategory getCategory() {
@@ -44,10 +53,14 @@ public final class DirectoryRecipePlugin implements IModPlugin {
     @Override
     public void onRuntimeAvailable(IJeiRuntime runtime) {
         jeiRuntime = runtime;
+        RecipeTreeData.clearCaches();
+        RecipeTreeDefaults.reload();
     }
 
     @Override
     public void onRuntimeUnavailable() {
         jeiRuntime = null;
+        RecipeTreeData.clearCaches();
+        RecipeTreeSession.clear();
     }
 }
