@@ -31,6 +31,11 @@ public final class JeiPlusPlusConfig {
             .comment("Add recipe-tree and crafting-assistant buttons to JEI recipe layouts.")
             .define("recipeTreeEnabled", true);
 
+    public static final ModConfigSpec.BooleanValue AUTOMATIC_CRAFTING_ENABLED =
+        BUILDER
+            .comment("Allow Shift-left-click in the recipe-tree bookmarks to automatically craft missing intermediate steps.")
+            .define("automaticCraftingEnabled", true);
+
     public static final ModConfigSpec.BooleanValue NBT_GROUPING_ENABLED =
         BUILDER
             .comment("Collapse different NBT/component variants of the same item, such as potions and enchanted books.")
