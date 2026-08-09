@@ -1,5 +1,6 @@
 package com.lingmu0.JeiPlusPlusMod.client;
 
+import com.lingmu0.JeiPlusPlusMod.mixin.BasicRecipeTransferHandlerAccessor;
 import mezz.jei.api.constants.VanillaTypes;
 import mezz.jei.api.gui.IRecipeLayoutDrawable;
 import mezz.jei.api.gui.ingredient.IRecipeSlotView;
@@ -10,6 +11,7 @@ import mezz.jei.api.recipe.category.IRecipeCategory;
 import mezz.jei.api.recipe.transfer.IRecipeTransferError;
 import mezz.jei.api.recipe.transfer.IRecipeTransferHandler;
 import mezz.jei.api.recipe.transfer.IRecipeTransferManager;
+import mezz.jei.api.recipe.transfer.IRecipeTransferInfo;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.common.Internal;
 import net.minecraft.client.Minecraft;
@@ -30,8 +32,10 @@ import net.minecraft.world.inventory.StonecutterMenu;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
+import java.lang.reflect.Field;
 import java.util.stream.Stream;
 
 /** Exact-count JEI transfer plus a bottom-up queue for instant crafting stations. */
@@ -211,7 +215,7 @@ public final class RecipeTreeTransfer {
         }
         Minecraft minecraft = Minecraft.getInstance();
         Player player = minecraft.player;
-        if (player == null) {
+        if (player == null || minecraft.gameMode == null) {
             return false;
         }
         AbstractContainerScreen<?> screen = containerScreen();
@@ -230,14 +234,246 @@ public final class RecipeTreeTransfer {
             return false;
         }
         IRecipeSlotsView slots = adjustInputs(layout.getRecipeSlotsView(), step.selectedInputs(), batches);
+        IRecipeTransferError validation;
+        try {
+            validation = handler.get().transferRecipe(
+                menu, layout.getRecipe(), slots, player, false, false
+            );
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+        if (validation != null && !validation.getType().allowsTransfer) {
+            return false;
+        }
+        if (!doTransfer) {
+            return true;
+        }
+
+        // JEI 15.x has no counted transfer packet. Its handler always moves
+        // one set, even when an adjusted ingredient stack contains a larger
+        // count. Fill the real recipe slots directly so the configured batch
+        // count is honoured before crafting or recursive output extraction.
+        if (batches > 1) {
+            Boolean exact = transferExactInputs(
+                handler.get(),
+                menu,
+                layout.getRecipe(),
+                layout.getRecipeSlotsView(),
+                step.selectedInputs(),
+                batches,
+                player
+            );
+            if (exact != null) {
+                return exact;
+            }
+        }
+
         try {
             IRecipeTransferError error = handler.get().transferRecipe(
-                menu, layout.getRecipe(), slots, player, false, doTransfer
+                menu, layout.getRecipe(), slots, player, false, true
             );
             return error == null || error.getType().allowsTransfer;
         } catch (RuntimeException ignored) {
             return false;
         }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static Boolean transferExactInputs(
+        IRecipeTransferHandler handler,
+        AbstractContainerMenu menu,
+        Object recipe,
+        IRecipeSlotsView slotsView,
+        List<String> selectedInputs,
+        int batches,
+        Player player
+    ) {
+        TransferSlots transferSlots = findTransferSlots(handler, menu, recipe);
+        if (transferSlots == null) {
+            return null;
+        }
+
+        List<IRecipeSlotView> inputViews = slotsView.getSlotViews().stream()
+            .filter(slot -> slot.getRole() == RecipeIngredientRole.INPUT)
+            .toList();
+        if (inputViews.size() > transferSlots.recipeSlots().size()) {
+            return null;
+        }
+
+        List<InputRequirement> requirements = new ArrayList<>();
+        for (int i = 0; i < inputViews.size(); i++) {
+            IRecipeSlotView input = inputViews.get(i);
+            Optional<ItemStack> perBatch = selectedInput(input,
+                i < selectedInputs.size() ? selectedInputs.get(i) : "");
+            if (perBatch.isEmpty()) {
+                continue;
+            }
+            long amount = (long) Math.max(1, perBatch.get().getCount()) * batches;
+            if (amount > Integer.MAX_VALUE) {
+                return false;
+            }
+            Slot target = transferSlots.recipeSlots().get(i);
+            if (!target.allowModification(player) || !target.mayPlace(perBatch.get())) {
+                return null;
+            }
+            requirements.add(new InputRequirement(
+                target,
+                perBatch.get(),
+                (int) amount
+            ));
+        }
+
+        if (requirements.isEmpty()) {
+            return null;
+        }
+
+        if (!hasExactSupply(requirements, transferSlots.inventorySlots(), transferSlots.recipeSlots())) {
+            return false;
+        }
+
+        // Match JEI's normal transfer behaviour by returning any old recipe
+        // inputs to the inventory before placing the requested amount.
+        for (Slot slot : transferSlots.recipeSlots()) {
+            if (!slot.getItem().isEmpty()) {
+                if (!slot.allowModification(player)) {
+                    return false;
+                }
+                Minecraft.getInstance().gameMode.handleInventoryMouseClick(
+                    menu.containerId, slot.index, 0, ClickType.QUICK_MOVE, player
+                );
+            }
+        }
+
+        for (InputRequirement requirement : requirements) {
+            int remaining = requirement.count();
+            while (remaining > 0) {
+                Slot source = transferSlots.inventorySlots().stream()
+                    .filter(slot -> !slot.getItem().isEmpty())
+                    .filter(slot -> RecipeTreeData.ingredientKey(slot.getItem())
+                        .equals(RecipeTreeData.ingredientKey(requirement.stack())))
+                    .findFirst()
+                    .orElse(null);
+                if (source == null) {
+                    return false;
+                }
+                int capacity = requirement.target().getMaxStackSize(requirement.stack())
+                    - requirement.target().getItem().getCount();
+                int move = Math.min(remaining, Math.min(source.getItem().getCount(), capacity));
+                if (move <= 0 || !moveItems(menu, player, source, requirement.target(), move)) {
+                    return false;
+                }
+                remaining -= move;
+            }
+        }
+        return true;
+    }
+
+    private static Optional<ItemStack> selectedInput(IRecipeSlotView slot, String selectedKey) {
+        String preferred = preferredInputKey(slot, selectedKey);
+        return slot.getItemStacks()
+            .filter(stack -> !stack.isEmpty())
+            .filter(stack -> preferred.isEmpty() || RecipeTreeData.ingredientKey(stack).equals(preferred))
+            .findFirst()
+            .map(ItemStack::copy);
+    }
+
+    private static boolean hasExactSupply(
+        List<InputRequirement> requirements,
+        List<Slot> inventorySlots,
+        List<Slot> recipeSlots
+    ) {
+        java.util.Map<String, Long> available = new HashMap<>();
+        Stream.concat(inventorySlots.stream(), recipeSlots.stream())
+            .map(Slot::getItem)
+            .filter(stack -> !stack.isEmpty())
+            .forEach(stack -> available.merge(
+                RecipeTreeData.ingredientKey(stack),
+                (long) stack.getCount(),
+                Long::sum
+            ));
+        for (InputRequirement requirement : requirements) {
+            String key = RecipeTreeData.ingredientKey(requirement.stack());
+            long count = available.getOrDefault(key, 0L);
+            if (count < requirement.count()) {
+                return false;
+            }
+            available.put(key, count - requirement.count());
+        }
+        return true;
+    }
+
+    private static boolean moveItems(
+        AbstractContainerMenu menu,
+        Player player,
+        Slot source,
+        Slot target,
+        int count
+    ) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.gameMode == null || !menu.getCarried().isEmpty()) {
+            return false;
+        }
+        ItemStack sourceStack = source.getItem();
+        if (sourceStack.isEmpty()) {
+            return false;
+        }
+        minecraft.gameMode.handleInventoryMouseClick(menu.containerId, source.index, 0, ClickType.PICKUP, player);
+        if (menu.getCarried().isEmpty()) {
+            return false;
+        }
+
+        int placed = Math.min(count, menu.getCarried().getCount());
+        boolean canPlaceAll = target.getItem().isEmpty()
+            && placed == menu.getCarried().getCount()
+            && target.getMaxStackSize(menu.getCarried()) >= placed;
+        if (canPlaceAll) {
+            minecraft.gameMode.handleInventoryMouseClick(menu.containerId, target.index, 0, ClickType.PICKUP, player);
+        } else {
+            for (int i = 0; i < placed; i++) {
+                minecraft.gameMode.handleInventoryMouseClick(menu.containerId, target.index, 1, ClickType.PICKUP, player);
+            }
+            if (!menu.getCarried().isEmpty()) {
+                minecraft.gameMode.handleInventoryMouseClick(menu.containerId, source.index, 0, ClickType.PICKUP, player);
+            }
+        }
+        return menu.getCarried().isEmpty() && target.getItem().getCount() >= placed;
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static TransferSlots findTransferSlots(
+        IRecipeTransferHandler handler,
+        AbstractContainerMenu menu,
+        Object recipe
+    ) {
+        if (handler instanceof BasicRecipeTransferHandlerAccessor accessor) {
+            try {
+                IRecipeTransferInfo info = accessor.jeiPlusPlus$getTransferInfo();
+                return new TransferSlots(
+                    List.copyOf(info.getRecipeSlots(menu, recipe)),
+                    List.copyOf(info.getInventorySlots(menu, recipe))
+                );
+            } catch (RuntimeException ignored) {
+                return null;
+            }
+        }
+        for (Class<?> type = handler.getClass(); type != null; type = type.getSuperclass()) {
+            for (Field field : type.getDeclaredFields()) {
+                if (!IRecipeTransferInfo.class.isAssignableFrom(field.getType())) {
+                    continue;
+                }
+                try {
+                    field.setAccessible(true);
+                    IRecipeTransferInfo info = (IRecipeTransferInfo) field.get(handler);
+                    return new TransferSlots(
+                        List.copyOf(info.getRecipeSlots(menu, recipe)),
+                        List.copyOf(info.getInventorySlots(menu, recipe))
+                    );
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -361,6 +597,12 @@ public final class RecipeTreeTransfer {
             this.step = step;
             this.remainingBatches = remainingBatches;
         }
+    }
+
+    private record TransferSlots(List<Slot> recipeSlots, List<Slot> inventorySlots) {
+    }
+
+    private record InputRequirement(Slot target, ItemStack stack, int count) {
     }
 
     private static final class AdjustedSlot implements IRecipeSlotView {

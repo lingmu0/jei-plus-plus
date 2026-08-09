@@ -8,6 +8,7 @@
   "client": [
     "RecipeGuiLayoutsMixin",
     "GuiIconToggleButtonMixin",
+    "BasicRecipeTransferHandlerAccessor",
     "RecipesGuiMixin",
     "RecipeBookmarkElementMixin",
     "BookmarkInputHandlerMixin",

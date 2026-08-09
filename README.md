@@ -31,6 +31,7 @@ JEI++ 是一个只在客户端运行的 JEI 附属模组，不添加方块、物
 | --- | --- | --- |
 | `stackGroupingEnabled` | `true` | 物品分组总开关 |
 | `recipeTreeEnabled` | `true` | 配方树与制作助手总开关 |
+| `automaticCraftingEnabled` | `true` | 允许配方树书签 Shift+左键自动合成缺少的中间步骤 |
 | `nbtGroupingEnabled` | `true` | 折叠相同物品的不同 NBT/组件 |
 | `tagGroupingEnabled` | `true` | 启用 Tag 分组 |
 | `jsonGroupingEnabled` | `true` | 启用 JSON 自定义分组 |
@@ -106,6 +107,7 @@ The client configuration file is `config/jei_plus_plus-client.toml`:
 | --- | --- | --- |
 | `stackGroupingEnabled` | `true` | Master item-grouping switch |
 | `recipeTreeEnabled` | `true` | Recipe Tree and Crafting Assistant switch |
+| `automaticCraftingEnabled` | `true` | Allow Shift-left-click in recipe-tree bookmarks to auto-craft missing steps |
 | `nbtGroupingEnabled` | `true` | Group NBT/component variants |
 | `tagGroupingEnabled` | `true` | Enable tag groups |
 | `jsonGroupingEnabled` | `true` | Enable custom JSON groups |

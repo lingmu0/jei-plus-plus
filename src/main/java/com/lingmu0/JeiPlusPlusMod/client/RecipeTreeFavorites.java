@@ -1,5 +1,6 @@
 package com.lingmu0.JeiPlusPlusMod.client;
 
+import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
 import com.lingmu0.JeiPlusPlusMod.mixin.BookmarkListAccessor;
 import com.mojang.blaze3d.platform.InputConstants;
 import mezz.jei.api.constants.VanillaTypes;
@@ -212,7 +213,8 @@ public final class RecipeTreeFavorites {
             // A normal click only transfers this recipe's direct inputs.  The
             // recursive plan is an explicit Shift-click action, including for
             // intermediate products whose direct inputs are not in the inventory.
-            boolean recursive = net.minecraft.client.gui.screens.Screen.hasShiftDown();
+            boolean recursive = JeiPlusPlusConfig.AUTOMATIC_CRAFTING_ENABLED.get()
+                && net.minecraft.client.gui.screens.Screen.hasShiftDown();
             if (input.isSimulate()) {
                 return RecipeTreeTransfer.canTransfer(step, recursive);
             }
@@ -243,7 +245,10 @@ public final class RecipeTreeFavorites {
                     ? "jei_plus_plus.recipe_tree.favorite.click_intermediate"
                     : "jei_plus_plus.recipe_tree.favorite.click";
                 tooltip.add(Component.translatable(clickKey).withStyle(ChatFormatting.AQUA));
-                tooltip.add(Component.translatable("jei_plus_plus.recipe_tree.favorite.shift_click").withStyle(ChatFormatting.AQUA));
+                if (JeiPlusPlusConfig.AUTOMATIC_CRAFTING_ENABLED.get()) {
+                    tooltip.add(Component.translatable("jei_plus_plus.recipe_tree.favorite.shift_click")
+                        .withStyle(ChatFormatting.AQUA));
+                }
             }
         }
 
