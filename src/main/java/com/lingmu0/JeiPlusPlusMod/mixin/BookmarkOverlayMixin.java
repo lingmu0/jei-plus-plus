@@ -53,6 +53,15 @@ public abstract class BookmarkOverlayMixin {
     @Unique
     private void jeiPlusPlus$placeTreeButton() {
         jeiPlusPlus$ensureTreeButton();
+        if (Minecraft.getInstance().screen instanceof RecipeTreeScreen) {
+            jeiPlusPlus$treeButton.updateBounds(new ImmutableRect2i(
+                6,
+                Minecraft.getInstance().getWindow().getGuiScaledHeight() - 26,
+                20,
+                20
+            ));
+            return;
+        }
         ImmutableRect2i history = historyButton.getArea();
         if (history.isEmpty()) {
             jeiPlusPlus$treeButton.updateBounds(ImmutableRect2i.EMPTY);
@@ -81,9 +90,6 @@ public abstract class BookmarkOverlayMixin {
             return;
         }
         jeiPlusPlus$placeTreeButton();
-        if (Minecraft.getInstance().screen instanceof RecipeTreeScreen) {
-            jeiPlusPlus$treeButton.updateBounds(new ImmutableRect2i(6, minecraft.getWindow().getGuiScaledHeight() - 26, 20, 20));
-        }
         RecipeTreeFavorites.refreshThrottled();
         jeiPlusPlus$treeButton.tick();
         jeiPlusPlus$treeButton.draw(graphics, mouseX, mouseY, partialTicks);
