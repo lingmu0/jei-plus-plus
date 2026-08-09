@@ -1,43 +1,46 @@
 # JEI++
 
-JEI++ æ¯ä¸ä¸ªåªå¨å®¢æ·ç«¯è¿è¡ç JEI éå±æ¨¡ç»ï¼ä¸æ·»å æ¹åãç©åæå¶ä»æ¸¸æåå®¹ã
+JEI++ 是一个只在客户端运行的 JEI 附属模组，不添加方块、物品或其他游戏内容。
 
-## ä¸­æè¯´æ
+## 中文说明
 
-### åè½
+### 功能
 
-- **å¤ç©åéæ¹ç®å½**ï¼éæ¹æ§½åå«å¤ä¸ªå¯éç©åæ¶ï¼ç¹å»æ§½ä½ä¼æå¼ JEI++ ç©åç®å½ï¼ç®å½æ JEI éæ¹é¡µåé¡µæ¾ç¤ºã
-- **éæ¹å¯¼èªæ»è½®**ï¼
-  - é¼ æ æ¾å¨é¡¶é¨å·¦å³ç®­å¤´åé¡µç æ°å­ç»æçåºåæ¶ï¼åä¸/åä¸æ»å¨ç­åäºç¹å»ä¸ä¸é¡µ/ä¸ä¸é¡µï¼ç¿»è¿å®æ´ç JEI éæ¹é¡µã
-  - é¼ æ æ¾å¨éæ¹é¡µåç§°/å¯¼èªè¡æ¶ï¼å¯æ»å¨åæ¢ååéæ¹é¡µã
-  - é¼ æ æ¾å¨éæ¹åç±»å¾æ è¡æ¶ï¼å¯æ»å¨åæ¢ååéæ¹åç±»ã
-- **ä¹¦ç­¾éæ¹æ¹è¿**ï¼
-  - æ¥çä¹¦ç­¾ä¸­çéæ¹æ¶ä¿çå¨é¨å¹ééæ¹ï¼å¹¶ä¼åæ¾ç¤ºè¯¥ä¹¦ç­¾éæ¹ã
-  - æ¥çä¹¦ç­¾ç©åçç¨éæ¶ä»ç¶æ¾ç¤ºå®æ´ç¨éåè¡¨ã
-  - å¼å¯ JEI çä¼åä¹¦ç­¾éæ¹è®¾ç½®åï¼æ¶èéæ¹è¾åºæ§½ä¼æ¶èå¯¹åºéæ¹ï¼æ¶èè¾å¥æ§½ä»åªæ¶èç©åã
-  - å¤è¾åºéæ¹ä¼æ ¹æ®é¼ æ å®éæåçè¾åºç©åæ¶èå¯¹åºéæ¹ï¼ä¸ä¼åºå®éæ©ç¬¬ä¸ä¸ªè¾åºã
-  - æ¯å¦å¨è¾åºæ§½æ¶èå¯¹åºéæ¹ç± `preferBookmarkedRecipeOnIngredientBookmark` æ§å¶ï¼é»è®¤å¼å¯ã
-- **åé ç©ååç±»æ **ï¼å¨ JEI ç©ååè¡¨ä¸æ¹æ¾ç¤ºå¨é¨ç©åååä¸ªåé æ¨¡å¼åç±»ï¼å¯ç¹å»ææ»è½®åæ¢åç±»ãåç±»æ ä¼ä¸º JEI åè¡¨é¢çç©ºé´ï¼é¡µç æå­ååç»æ°éè¦çå±ä½äºç©åè´´å¾ä¸æ¹ã
-- **ç©ååç»æå **ï¼
-  - åç½®åç¼åç»ï¼ç¾æ¯ãæ¨æ¿ãåæ¨ãå·¥å·ãç¿ç³ç­ï¼å¯ç¹å»å±å¼/éæ°æå ã
-  - ç¸åç©åæ³¨ååä½ NBT/ç»ä»¶ä¸åçç©åä¼æå å°ä¸èµ·ï¼ä¾å¦ä¸åè¯æ°´ãéé­ä¹¦ï¼é»è®¤å¼å¯ã
-  - æ¯æéè¿ JSON å®ä¹ç©ååè¡¨åç»ãTag åç»åæ­£åè¡¨è¾¾å¼åç»ã
-  - é»è®¤åç»å¯ä»¥éç»å³é­ï¼é»è®¤åç»æ¯å¦è·¨ Mod å½åç©ºé´æ··ç»ä¹å¯è®¾ç½®ï¼é»è®¤è·¨å½åç©ºé´æ··ç»ã
+- **多物品配方目录**：配方槽包含多个候选物品时，点击槽位打开分页目录；目录中的物品可以继续查看配方、用途和标签信息。
+- **配方树与制作助手**：
+  - 每个真实 JEI 配方提供配方树按钮和默认配方按钮；标签信息页不会被当作配方，按钮只显示对应图标。
+  - 默认配方按输出物品保存，支持多输出配方的完整或部分默认状态；个人选择保存到 `config/jei_plus_plus/recipe_defaults.json`。
+  - 配方树和书签中的候选输入提示采用 JEI 风格，显示标签名称、候选图标和模组信息；内置默认清单不会选择“原木/去皮原木→木头”或“铁粒→铁锭”，这些配方仍可手动设为默认。
+  - 配方树节点可以展开、折叠、选择配方和固定具体输入。多个等价输入槽会合并为一个节点；节点上的 `+` 会在配方树内打开候选材料窗口，选择后所有对应槽位统一使用该物品，右键可恢复候选状态。
+  - 未固定输入时，所有候选都会参与库存统计、背包高亮和 JEI 配方转移。候选选择会优先使用背包中的物品，并递归查找可获得的材料链（例如原木→木板），不会按库存评分自动替换已选配方。
+  - 制作模式支持拖动、缩放、份数调整、循环保护和副产物统计；最终产物、总耗材与副产物以同一竖直中心线布局。缺少的基础材料和中间产物会分别高亮。
+  - 制作模式会把目标、中间产物和基础材料追加到 JEI 书签栏，即使库存已经满足也会继续显示。提示中的已有数量实时读取背包；左键转移当前步骤所需材料，Shift+左键递归转移并只处理缺少的步骤，兼容的即时工作方块会自动取出中间产物，有加工时间的机器只放入材料。
+  - 全局配方树按钮位于 JEI 书签/历史按钮一行，只在 JEI 界面和配方树界面显示。左键再次点击或按 E/Esc 返回，右键清除当前配方树；没有活动配方树时显示引导页。
+- **配方导航滚轮**：
+  - 在顶部左右箭头与页码区域滚轮，执行上一页/下一页整页操作。
+  - 在配方名称行或配方分类图标行滚轮，切换前后配方页或配方分类。
+- **书签配方改进**：查看书签配方时保留全部匹配配方并优先显示书签配方；查看用途时保留完整用途列表。启用 JEI 的优先书签配方设置后，收藏输出槽会收藏对应配方，输入槽仍只收藏物品；多输出配方按鼠标指向的输出物品确定收藏配方。
+- **创造物品分类栏**：在 JEI 物品列表上方显示全部物品和创造模式分类，可点击或滚轮切换；列表会预留分类栏空间，页码和数量覆盖层始终绘制在物品贴图上方。
+- **物品分组折叠**：内置羊毛、木板、原木、工具、矿石等分组，可展开和重新折叠；相同注册名但 NBT/组件不同的物品（例如药水、附魔书）可以折叠。支持物品列表、Tag 和正则表达式 JSON 分组；每个默认分组可单独开关，也可设置是否混合不同 Mod 命名空间。
 
-### éç½®
+### 配置
 
-éç½®æä»¶ä¸º `config/jei_plus_plus-client.toml`ãä¸»è¦å¼å³å¦ä¸ï¼
+客户端配置文件为 `config/jei_plus_plus-client.toml`，常用选项如下：
 
-| éç½®é¡¹ | é»è®¤å¼ | ä½ç¨ |
+| 配置项 | 默认值 | 作用 |
 | --- | --- | --- |
-| `stackGroupingEnabled` | `true` | æ»å¼å³ï¼å³é­ææç©ååç» |
-| `nbtGroupingEnabled` | `true` | æå ç¸åç©åçä¸å NBT/ç»ä»¶ |
-| `tagGroupingEnabled` | `true` | å¯ç¨ JSON Tag åç» |
-| `jsonGroupingEnabled` | `true` | å¯ç¨ JSON èªå®ä¹åç» |
-| `mixNamespaceGroups` | `true` | åè®¸é»è®¤åç»æ··åä¸å Mod å½åç©ºé´ |
-| `defaultGroups.<åç»å>` | `true` | åç¬å¯ç¨/ç¦ç¨ä¸ä¸ªåç½®é»è®¤åç» |
+| `stackGroupingEnabled` | `true` | 物品分组总开关 |
+| `recipeTreeEnabled` | `true` | 配方树与制作助手总开关 |
+| `nbtGroupingEnabled` | `true` | 折叠相同物品的不同 NBT/组件 |
+| `tagGroupingEnabled` | `true` | 启用 Tag 分组 |
+| `jsonGroupingEnabled` | `true` | 启用 JSON 自定义分组 |
+| `mixNamespaceGroups` | `true` | 默认分组是否混合不同 Mod 命名空间 |
+| `defaultGroups.<分组名>` | `true` | 单独启用或禁用一个默认分组 |
+| `preferBookmarkedRecipeOnIngredientBookmark` | `true` | 收藏输出槽时优先收藏对应配方 |
 
-JSON åç»æä»¶æ¾å¨ `config/jei_plus_plus/stack_groups/*.json`ãæä»¶ä¿®æ¹ãæ°å¢æå é¤åï¼JEI++ ä¼å¨ç©ååè¡¨å·æ°æ¶èªå¨éæ°è¯»åã
+默认配方选择保存在 `config/jei_plus_plus/recipe_defaults.json`。JSON 分组文件放在 `config/jei_plus_plus/stack_groups/*.json`，刷新 JEI 物品列表时会重新读取。
+
+示例：
 
 ```json
 {
@@ -55,13 +58,9 @@ JSON åç»æä»¶æ¾å¨ `config/jei_plus_plus/stack_groups/*.j
 }
 ```
 
-å¯ç¨ç JSON ç±»åï¼
+支持的 JSON 类型：`jei_plus_plus:group`（物品 ID 或 Tag）、`jei_plus_plus:tag`（Tag 成员）和 `jei_plus_plus:regex`（按完整 `namespace:path` 注册名匹配）。`name` 可以是翻译键或直接显示的文本，`priority` 越大越优先。
 
-- `jei_plus_plus:group`ï¼`contents` ä¸­å¡«åç©åæ³¨ååæ `#namespace:tag`ã
-- `jei_plus_plus:tag`ï¼å¡«å `tag` æ `contents`ï¼å°åä¸ä¸ªç©å Tag ä¸­çç©åæå ã
-- `jei_plus_plus:regex`ï¼å¡«å `regex` æ `regexes`ï¼æå®æ´ç©åæ³¨åå `namespace:path` å¹éã
-
-`name` å¯ä»¥æ¯ç¿»è¯é®ï¼ä¾å¦ `mypack.group.shiny_things`ï¼ï¼ä¹å¯ä»¥ç´æ¥å¡«åæ¾ç¤ºææ¬ï¼`priority` è¶å¤§è¶ä¼åå¹éãå¯ä»¥ä½¿ç¨åä¸ä¸ªé»è®¤åç» ID è¦çæå³é­é»è®¤åç»ï¼
+默认分组可通过同 ID 的 JSON 文件覆盖或关闭，例如：
 
 ```json
 {
@@ -70,13 +69,13 @@ JSON åç»æä»¶æ¾å¨ `config/jei_plus_plus/stack_groups/*.j
 }
 ```
 
-åç½®é»è®¤åç»åæ¬ï¼`wool`ã`carpet`ã`concrete`ã`concrete_powder`ã`terracotta`ã`glazed_terracotta`ã`stained_glass`ã`stained_glass_pane`ã`candle`ã`bed`ã`banner`ã`shulker_box`ã`planks`ã`stripped_logs`ã`logs`ã`stripped_wood`ã`wood`ã`slab`ã`stairs`ã`wall`ã`fence_gate`ã`fence`ã`door`ã`trapdoor`ã`button`ã`pressure_plate`ã`glass`ã`pane`ã`ore`ã`raw_material`ã`ingot`ã`nugget`ã`sword`ã`pickaxe`ã`axe`ã`shovel`ã`hoe`ã`boat`ã`sapling`ã`seed`ã`flower`ã`leaves`ã`rail`ã`hanging_sign`ã`sign`ãæ¯ä¸ªåç§°åæ¶å¯¹åº TOML ä¸­ç `defaultGroups.<åç§°>` å `jei_plus_plus.group.default.<åç§°>` ç¿»è¯é®ã
+内置默认分组包括 `wool`、`carpet`、`concrete`、`concrete_powder`、`terracotta`、`glazed_terracotta`、`stained_glass`、`stained_glass_pane`、`candle`、`bed`、`banner`、`shulker_box`、`planks`、`stripped_logs`、`logs`、`stripped_wood`、`wood`、`slab`、`stairs`、`wall`、`fence_gate`、`fence`、`door`、`trapdoor`、`button`、`pressure_plate`、`glass`、`pane`、`ore`、`raw_material`、`ingot`、`nugget`、`sword`、`pickaxe`、`axe`、`shovel`、`hoe`、`boat`、`sapling`、`seed`、`flower`、`leaves`、`rail`、`hanging_sign` 和 `sign`；每个 ID 都有独立的 TOML 开关。
 
-### çæ¬
+### 版本
 
-- åæ¯ `1.20.1`ï¼Minecraft 1.20.1 + Forgeï¼Java 17ã
-- åæ¯ `1.21.1`ï¼Minecraft 1.21.1 + NeoForgeï¼Java 21ã
-- JEI æ¯å¯éçå®¢æ·ç«¯ä¾èµï¼æ²¡æ JEI æ¶ä¸ä¼å è½½ JEI å®¢æ·ç«¯åè½ã
+- 分支 `1.20.1`：Minecraft 1.20.1 + Forge，Java 17。
+- 分支 `1.21.1`：Minecraft 1.21.1 + NeoForge，Java 21。
+- JEI 是可选的客户端依赖；未安装 JEI 时不会加载 JEI 客户端功能。
 
 ## English
 
@@ -84,74 +83,44 @@ JEI++ is a client-only JEI addon. It does not add blocks, items, recipes, or oth
 
 ### Features
 
-- **Multi-ingredient recipe directories**: clicking a recipe slot with many alternatives opens a paged JEI++ ingredient directory.
-- **Recipe navigation scrolling**:
-  - Scrolling over the top band containing the previous/next arrows and page number performs a complete previous/next JEI page action.
-  - Scrolling over the recipe title/navigation row changes the previous/next recipe page.
-  - Scrolling over the recipe-category icon row changes the previous/next recipe category.
-- **Bookmark improvements**:
-  - Opening a bookmarked recipe keeps every matching recipe available while putting the bookmarked recipe first.
-  - Uses for a bookmarked ingredient still show the full usage list.
-  - When JEI's bookmarked-recipe priority is enabled, bookmarking an output slot bookmarks that recipe; input slots still bookmark only the item.
-  - For recipes with multiple outputs, the output under the cursor determines which recipe is bookmarked instead of always choosing the first output.
-  - `preferBookmarkedRecipeOnIngredientBookmark` controls output-slot recipe bookmarking and defaults to `true`.
-- **Creative item tab bar**: shows the all-items entry and vanilla/modded creative tabs above JEI's item list. Tabs can be clicked or scrolled. JEI receives reserved space, and page/count overlays render above item textures.
-- **Expandable item groups**:
-  - Built-in suffix groups (wool, planks, logs, tools, ores, and more) can be expanded and collapsed.
-  - Different NBT/component variants of the same registered item are grouped together, including potion and enchanted-book variants; enabled by default.
-  - Item-list, tag, and regular-expression groups can be defined with JSON files.
-  - Every built-in group has its own switch, and default groups can either mix or separate Mod namespaces; namespace mixing defaults to enabled.
+- **Multi-ingredient recipe directories**: recipe slots with multiple candidates open a paged directory; entries can be used to inspect recipes, usages, and tag information.
+- **Recipe Tree and Crafting Assistant**:
+  - Every real JEI recipe has recipe-tree and default-recipe buttons. Tag-information pages are excluded and the buttons render only their icons.
+  - Default recipes are stored per output, including partial selections for multi-output recipes, in `config/jei_plus_plus/recipe_defaults.json`.
+  - Candidate and bookmark tooltips use JEI-style tag names, candidate icons, and Mod information. The built-in defaults do not select logs/stripped logs → wood or nuggets → ingots; either can still be selected manually.
+  - Nodes can be expanded, collapsed, assigned a recipe, or locked to a concrete input. Equivalent input slots are merged; the `+` button opens an in-tree candidate picker and right-click restores the unlocked state.
+  - With no locked input, every candidate participates in inventory totals, highlighting, and JEI transfer. Candidate display prefers items already in the inventory and recursively searches craftable material chains (for example logs → planks), without replacing a selected recipe by inventory score.
+  - Crafting mode supports panning, zooming, batch counts, cycle protection, and leftover reporting. The final product, total costs, and leftovers share one vertical center line, while missing base materials and intermediate products are highlighted separately.
+  - Targets, intermediates, and base costs are shown in JEI bookmarks even when already owned. Counts are refreshed from the live inventory. Left-click transfers the current step; Shift+left-click recursively transfers only missing steps, taking intermediate outputs from compatible instant stations and placing only inputs into timed machines.
+  - The global tree button sits beside JEI bookmarks/history and appears only in JEI screens and the tree screen. Left-clicking it again or pressing E/Escape returns; right-clicking clears the active tree. A welcome page is shown when no tree is active.
+- **Recipe navigation scrolling**: the top arrow/page-number band performs previous/next full-page actions; the recipe-title row and category-icon row switch recipe pages and categories respectively.
+- **Bookmark recipe behavior**: bookmarked recipes keep all matching recipes while putting the bookmarked one first, and usages remain complete. With JEI bookmark-recipe priority enabled, output slots bookmark their recipe while input slots bookmark only the item; multi-output recipes use the output under the cursor.
+- **Creative item tab bar**: all-items and creative categories appear above JEI's item list, with click and wheel navigation. JEI reserves the tab space, and page/count overlays render above item textures.
+- **Expandable item groups**: built-in wool, planks, logs, tools, ores, and similar groups can be expanded or collapsed. NBT/component variants of one registered item can be grouped, including potion and enchanted-book variants. Item-list, tag, and regular-expression groups are configurable through JSON; every default group has its own switch and namespace mixing is configurable.
 
 ### Configuration
 
-The configuration file is `config/jei_plus_plus-client.toml`:
+The client configuration file is `config/jei_plus_plus-client.toml`:
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `stackGroupingEnabled` | `true` | Master switch for item grouping |
-| `nbtGroupingEnabled` | `true` | Group different NBT/component variants of one item |
-| `tagGroupingEnabled` | `true` | Enable JSON tag groups |
+| `stackGroupingEnabled` | `true` | Master item-grouping switch |
+| `recipeTreeEnabled` | `true` | Recipe Tree and Crafting Assistant switch |
+| `nbtGroupingEnabled` | `true` | Group NBT/component variants |
+| `tagGroupingEnabled` | `true` | Enable tag groups |
 | `jsonGroupingEnabled` | `true` | Enable custom JSON groups |
 | `mixNamespaceGroups` | `true` | Mix default groups across Mod namespaces |
-| `defaultGroups.<group>` | `true` | Enable or disable one built-in group |
+| `defaultGroups.<group>` | `true` | Enable or disable one default group |
+| `preferBookmarkedRecipeOnIngredientBookmark` | `true` | Prefer the recipe when bookmarking an output |
 
-JSON group files are loaded from `config/jei_plus_plus/stack_groups/*.json`. JEI++ rescans the directory when the item list refreshes, so files can be added, changed, or removed without rebuilding the mod.
+Default-recipe choices are saved in `config/jei_plus_plus/recipe_defaults.json`. JSON group files are loaded from `config/jei_plus_plus/stack_groups/*.json` whenever JEI refreshes its item list.
 
-```json
-{
-  "id": "mypack:shiny_things",
-  "type": "jei_plus_plus:group",
-  "name": "mypack.group.shiny_things",
-  "enabled": true,
-  "priority": 10,
-  "contents": [
-    "minecraft:diamond",
-    "minecraft:emerald",
-    "#c:glass_blocks"
-  ],
-  "exclusions": ["minecraft:purple_stained_glass"]
-}
-```
+Supported JSON types are `jei_plus_plus:group` (item IDs or tags), `jei_plus_plus:tag` (tag members), and `jei_plus_plus:regex` (full `namespace:path` item-ID matching). `name` accepts a translation key or literal text, and higher `priority` values win when groups overlap.
 
-Supported JSON types:
-
-- `jei_plus_plus:group`: `contents` accepts item IDs or `#namespace:tag` entries.
-- `jei_plus_plus:tag`: use `tag` or `contents` to group members of an item tag.
-- `jei_plus_plus:regex`: use `regex` or `regexes` to match the complete `namespace:path` item ID.
-
-`name` can be a translation key (for example `mypack.group.shiny_things`) or literal display text. Higher `priority` values win when groups overlap. A built-in group can be overridden or disabled with its ID:
-
-```json
-{
-  "id": "jei_plus_plus:wool",
-  "enabled": false
-}
-```
-
-Built-in group IDs are: `wool`, `carpet`, `concrete`, `concrete_powder`, `terracotta`, `glazed_terracotta`, `stained_glass`, `stained_glass_pane`, `candle`, `bed`, `banner`, `shulker_box`, `planks`, `stripped_logs`, `logs`, `stripped_wood`, `wood`, `slab`, `stairs`, `wall`, `fence_gate`, `fence`, `door`, `trapdoor`, `button`, `pressure_plate`, `glass`, `pane`, `ore`, `raw_material`, `ingot`, `nugget`, `sword`, `pickaxe`, `axe`, `shovel`, `hoe`, `boat`, `sapling`, `seed`, `flower`, `leaves`, `rail`, `hanging_sign`, and `sign`. Each ID maps to `defaultGroups.<id>` in TOML and the `jei_plus_plus.group.default.<id>` translation key.
+Built-in group IDs include `wool`, `carpet`, `concrete`, `concrete_powder`, `terracotta`, `glazed_terracotta`, `stained_glass`, `stained_glass_pane`, `candle`, `bed`, `banner`, `shulker_box`, `planks`, `stripped_logs`, `logs`, `stripped_wood`, `wood`, `slab`, `stairs`, `wall`, `fence_gate`, `fence`, `door`, `trapdoor`, `button`, `pressure_plate`, `glass`, `pane`, `ore`, `raw_material`, `ingot`, `nugget`, `sword`, `pickaxe`, `axe`, `shovel`, `hoe`, `boat`, `sapling`, `seed`, `flower`, `leaves`, `rail`, `hanging_sign`, and `sign`; each ID has an independent TOML switch.
 
 ### Versions
 
 - Branch `1.20.1`: Minecraft 1.20.1 + Forge, Java 17.
 - Branch `1.21.1`: Minecraft 1.21.1 + NeoForge, Java 21.
-- JEI is an optional client dependency; the JEI client features are not loaded without it.
+- JEI is an optional client dependency; JEI client features are skipped when JEI is absent.

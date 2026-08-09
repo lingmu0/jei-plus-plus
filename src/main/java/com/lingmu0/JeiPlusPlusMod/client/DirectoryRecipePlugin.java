@@ -23,6 +23,7 @@ public final class DirectoryRecipePlugin implements IModPlugin {
     @Override
     public void registerCategories(IRecipeCategoryRegistration registration) {
         IGuiHelper guiHelper = registration.getJeiHelpers().getGuiHelper();
+        RecipeTreeIcons.initialize(guiHelper);
         category = new DirectoryRecipeCategory(guiHelper);
         registration.addRecipeCategories(category);
     }
@@ -44,10 +45,14 @@ public final class DirectoryRecipePlugin implements IModPlugin {
     @Override
     public void onRuntimeAvailable(IJeiRuntime runtime) {
         jeiRuntime = runtime;
+        RecipeTreeData.clearCaches();
+        RecipeTreeDefaults.reload();
     }
 
     @Override
     public void onRuntimeUnavailable() {
         jeiRuntime = null;
+        RecipeTreeData.clearCaches();
+        RecipeTreeSession.clear();
     }
 }

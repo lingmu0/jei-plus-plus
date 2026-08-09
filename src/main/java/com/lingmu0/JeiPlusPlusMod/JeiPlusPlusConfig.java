@@ -26,6 +26,11 @@ public final class JeiPlusPlusConfig {
             .comment("Collapse related item variants in JEI's ingredient list. Click a group to expand it.")
             .define("stackGroupingEnabled", true);
 
+    public static final ForgeConfigSpec.BooleanValue RECIPE_TREE_ENABLED =
+        BUILDER
+            .comment("Add recipe-tree and crafting-assistant buttons to JEI recipe layouts.")
+            .define("recipeTreeEnabled", true);
+
     public static final ForgeConfigSpec.BooleanValue NBT_GROUPING_ENABLED =
         BUILDER
             .comment("Collapse different NBT/component variants of the same item, such as potions and enchanted books.")
