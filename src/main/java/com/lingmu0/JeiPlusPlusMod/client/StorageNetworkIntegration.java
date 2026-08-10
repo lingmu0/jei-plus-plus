@@ -178,7 +178,104 @@ final class StorageNetworkIntegration {
 
     /** Only AE2 currently exposes a safe client-side cursor-to-network hook. */
     static Boolean putCarriedItemIntoNetwork(Object menu, boolean single) {
-        return Ae2StorageIntegration.putCarriedItemIntoNetwork(menu, single);
+        Boolean ae2 = Ae2StorageIntegration.putCarriedItemIntoNetwork(menu, single);
+        if (ae2 != null) {
+            return ae2;
+        }
+        try {
+            if (isRs1Menu(menu)) {
+                Class<?> messageType = Class.forName(
+                    "com.refinedmods.refinedstorage.network.grid.GridItemInsertHeldMessage"
+                );
+                Object message = constructor(messageType, boolean.class).newInstance(single);
+                Class<?> rsType = Class.forName("com.refinedmods.refinedstorage.RS");
+                Object handler = readStaticField(rsType, "NETWORK_HANDLER");
+                Method sender = findCompatibleMethod(handler == null ? null : handler.getClass(), "sendToServer", messageType);
+                if (handler != null && sender != null) {
+                    sender.invoke(handler, message);
+                    return true;
+                }
+                return false;
+            }
+            if (isRs2Menu(menu)) {
+                Class<?> modeType = Class.forName(
+                    "com.refinedmods.refinedstorage.api.network.node.grid.GridInsertMode"
+                );
+                @SuppressWarnings({"rawtypes", "unchecked"})
+                Object mode = Enum.valueOf(
+                    (Class<? extends Enum>) modeType.asSubclass(Enum.class),
+                    single ? "SINGLE_RESOURCE" : "ENTIRE_RESOURCE"
+                );
+                Class<?> packets = Class.forName(
+                    "com.refinedmods.refinedstorage.common.support.packet.c2s.C2SPackets"
+                );
+                Method sender = findCompatibleMethod(packets, "sendGridInsert", modeType, boolean.class);
+                if (sender != null) {
+                    sender.invoke(null, mode, true);
+                    return true;
+                }
+                return false;
+            }
+            if (isBeyondMenu(menu)) {
+                return sendBeyondCursorInsert(menu);
+            }
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            // Optional network insertion APIs.
+        }
+        return null;
+    }
+
+    private static Boolean sendBeyondCursorInsert(Object menu) {
+        try {
+            Slot target = null;
+            for (Slot slot : menu instanceof AbstractContainerMenu container ? container.slots : List.<Slot>of()) {
+                String name = slot.getClass().getName();
+                if (name.contains("beyonddimensions") && name.contains("StackTypedSlot")) {
+                    target = slot;
+                    break;
+                }
+            }
+            if (target == null) {
+                return false;
+            }
+            Object clickItem = invokeNoArg(target, "getVanillaActualStack");
+            Class<?> packetType = Class.forName(
+                "com.wintercogs.beyonddimensions.network.packet.c2s.CallSeverClickPacket"
+            );
+            Constructor<?> packetConstructor = constructor(
+                packetType,
+                int.class,
+                clickItem == null ? Object.class : clickItem.getClass(),
+                int.class,
+                boolean.class
+            );
+            if (packetConstructor == null) {
+                return false;
+            }
+            int index = intValue(readField(target, "index"));
+            if (index < 0) {
+                index = intValue(invokeNoArg(target, "getContainerSlot"));
+            }
+            Object packet = packetConstructor.newInstance(index, clickItem, 0, false);
+            for (String distributorName : List.of(
+                "net.neoforged.neoforge.network.PacketDistributor",
+                "net.minecraftforge.network.PacketDistributor"
+            )) {
+                try {
+                    Class<?> distributor = Class.forName(distributorName);
+                    Method sender = findCompatibleMethod(distributor, "sendToServer", packetType);
+                    if (sender != null) {
+                        sender.invoke(null, packet);
+                        return true;
+                    }
+                } catch (ClassNotFoundException ignored) {
+                    // Try the other loader's packet distributor.
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            // Optional Beyond Dimensions network click packet.
+        }
+        return false;
     }
 
     static boolean isCraftingMenu(Object menu) {
@@ -563,4 +660,3 @@ final class StorageNetworkIntegration {
         }
     }
 }
-
