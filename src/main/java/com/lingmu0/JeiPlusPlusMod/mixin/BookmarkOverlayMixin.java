@@ -1,5 +1,6 @@
 package com.lingmu0.JeiPlusPlusMod.mixin;
 
+import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeFavorites;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeScreen;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeSession;
@@ -8,6 +9,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import mezz.jei.api.gui.handlers.IGuiProperties;
 import mezz.jei.common.input.IInternalKeyMappings;
 import mezz.jei.common.util.ImmutableRect2i;
+import mezz.jei.gui.elements.GuiIconToggleButton;
 import mezz.jei.gui.input.IUserInputHandler;
 import mezz.jei.gui.input.UserInput;
 import mezz.jei.gui.input.handlers.CombinedInputHandler;
@@ -27,6 +29,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.lang.reflect.Field;
 import java.util.Optional;
 
 @Mixin(value = BookmarkOverlay.class, remap = false)
@@ -35,6 +38,10 @@ public abstract class BookmarkOverlayMixin {
     @Shadow @Final private ScreenPropertiesCache screenPropertiesCache;
 
     @Unique private RecipeTreeSidebarButton jeiPlusPlus$treeButton;
+    @Unique private static volatile Field jeiPlusPlus$historyButtonField;
+    @Unique private static volatile boolean jeiPlusPlus$historyButtonFieldResolved;
+    @Unique private static volatile Field jeiPlusPlus$toggleAreaField;
+    @Unique private static volatile boolean jeiPlusPlus$toggleAreaFieldResolved;
 
     /**
      * JEI's BookmarkOverlay constructor is not a stable extension point. JEI
@@ -52,6 +59,10 @@ public abstract class BookmarkOverlayMixin {
     @Inject(method = "updateBounds", at = @At("TAIL"), remap = false)
     private void jeiPlusPlus$placeTreeButton(IGuiProperties guiProperties, CallbackInfo ci) {
         jeiPlusPlus$ensureTreeButton();
+        if (!JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get()) {
+            jeiPlusPlus$treeButton.updateBounds(ImmutableRect2i.EMPTY);
+            return;
+        }
         int leftWidth = Math.max(0, guiProperties.getGuiLeft());
         ImmutableRect2i bookmarkArea = new ImmutableRect2i(0, 0, leftWidth, guiProperties.getScreenHeight())
             .insetBy(6);
@@ -59,12 +70,24 @@ public abstract class BookmarkOverlayMixin {
             bookmarkArea = bookmarkArea.matchWidthAndX(contents.getBackgroundArea());
         }
         bookmarkArea = bookmarkArea.keepBottom(20).keepLeft(20);
-        jeiPlusPlus$treeButton.updateBounds(bookmarkArea.moveRight(22));
+        GuiIconToggleButton historyButton = jeiPlusPlus$historyButton();
+        ImmutableRect2i historyArea = jeiPlusPlus$buttonArea(historyButton);
+        if (!historyArea.isEmpty()) {
+            // JEI 15.21 added lookup history between the bookmark and the
+            // sidebar. Place our button after whichever built-in controls are
+            // actually present instead of assuming the old two-button layout.
+            jeiPlusPlus$treeButton.updateBounds(historyArea.moveRight(22));
+        } else {
+            jeiPlusPlus$treeButton.updateBounds(bookmarkArea.moveRight(22));
+        }
     }
 
     @Inject(method = "isListDisplayed", at = @At("RETURN"), cancellable = true, remap = false)
     private void jeiPlusPlus$showTreeFavorites(CallbackInfoReturnable<Boolean> cir) {
-        if (RecipeTreeFavorites.isActive() && screenPropertiesCache.hasValidScreen() && contents.hasRoom()) {
+        if (JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get()
+            && RecipeTreeFavorites.isActive()
+            && screenPropertiesCache.hasValidScreen()
+            && contents.hasRoom()) {
             cir.setReturnValue(true);
         }
     }
@@ -108,6 +131,9 @@ public abstract class BookmarkOverlayMixin {
             original
         );
         cir.setReturnValue(new ProxyInputHandler(() -> {
+            if (!JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get()) {
+                return original;
+            }
             if (Minecraft.getInstance().screen instanceof RecipeTreeScreen) {
                 return treeButtonInput;
             }
@@ -117,7 +143,104 @@ public abstract class BookmarkOverlayMixin {
 
     @Unique
     private boolean jeiPlusPlus$isTreeButtonScreen() {
-        return screenPropertiesCache.hasValidScreen() || Minecraft.getInstance().screen instanceof RecipeTreeScreen;
+        return JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get()
+            && (screenPropertiesCache.hasValidScreen() || Minecraft.getInstance().screen instanceof RecipeTreeScreen);
+    }
+
+    @Unique
+    private GuiIconToggleButton jeiPlusPlus$historyButton() {
+        if (!jeiPlusPlus$historyButtonFieldResolved) {
+            synchronized (BookmarkOverlayMixin.class) {
+                if (!jeiPlusPlus$historyButtonFieldResolved) {
+                    Field history = null;
+                    Field lastButton = null;
+                    int buttonCount = 0;
+                    for (Field field : BookmarkOverlay.class.getDeclaredFields()) {
+                        // Mixin fields are copied onto the target class. Do
+                        // not mistake JEI++'s own sidebar button for a JEI
+                        // history button when the latter is obfuscated.
+                        if (field.getName().contains("jeiPlusPlus")) {
+                            continue;
+                        }
+                        if (!GuiIconToggleButton.class.isAssignableFrom(field.getType())) {
+                            continue;
+                        }
+                        buttonCount++;
+                        lastButton = field;
+                        if (field.getName().toLowerCase(java.util.Locale.ROOT).contains("history")) {
+                            history = field;
+                        }
+                    }
+                    if (history == null && buttonCount > 1) {
+                        // Obfuscated builds may lose the field name, but the
+                        // history button is still the second JEI toggle.
+                        history = lastButton;
+                    }
+                    if (history != null) {
+                        try {
+                            if (!history.trySetAccessible()) {
+                                history = null;
+                            }
+                        } catch (RuntimeException ignored) {
+                            history = null;
+                        }
+                    }
+                    jeiPlusPlus$historyButtonField = history;
+                    jeiPlusPlus$historyButtonFieldResolved = true;
+                }
+            }
+        }
+        Field history = jeiPlusPlus$historyButtonField;
+        if (history == null) {
+            return null;
+        }
+        try {
+            Object value = history.get(this);
+            return value == jeiPlusPlus$treeButton ? null : (GuiIconToggleButton) value;
+        } catch (IllegalAccessException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    @Unique
+    private ImmutableRect2i jeiPlusPlus$buttonArea(GuiIconToggleButton button) {
+        if (button == null) {
+            return ImmutableRect2i.EMPTY;
+        }
+        if (!jeiPlusPlus$toggleAreaFieldResolved) {
+            synchronized (BookmarkOverlayMixin.class) {
+                if (!jeiPlusPlus$toggleAreaFieldResolved) {
+                    Field area = null;
+                    for (Field field : GuiIconToggleButton.class.getDeclaredFields()) {
+                        if (ImmutableRect2i.class.isAssignableFrom(field.getType())) {
+                            area = field;
+                            break;
+                        }
+                    }
+                    if (area != null) {
+                        try {
+                            if (!area.trySetAccessible()) {
+                                area = null;
+                            }
+                        } catch (RuntimeException ignored) {
+                            area = null;
+                        }
+                    }
+                    jeiPlusPlus$toggleAreaField = area;
+                    jeiPlusPlus$toggleAreaFieldResolved = true;
+                }
+            }
+        }
+        Field area = jeiPlusPlus$toggleAreaField;
+        if (area == null) {
+            return ImmutableRect2i.EMPTY;
+        }
+        try {
+            Object value = area.get(button);
+            return value instanceof ImmutableRect2i immutableArea ? immutableArea : ImmutableRect2i.EMPTY;
+        } catch (IllegalAccessException | RuntimeException ignored) {
+            return ImmutableRect2i.EMPTY;
+        }
     }
 
     @Unique
