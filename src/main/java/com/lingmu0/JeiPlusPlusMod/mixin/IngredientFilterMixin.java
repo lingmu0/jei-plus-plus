@@ -12,20 +12,31 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** Adds creative-tab filtering and Reliable-EMI-style expandable groups. */
 @Mixin(value = IngredientFilter.class, remap = false)
 public abstract class IngredientFilterMixin implements IngredientListFeatureSource, IngredientListFeatures.IngredientListExpansionState {
     @Unique
-    private int jeiPlusPlus$selectedCreativeTab;
+    private volatile int jeiPlusPlus$selectedCreativeTab;
     @Unique
-    private final Set<String> jeiPlusPlus$expandedGroups = new HashSet<>();
+    private final Set<String> jeiPlusPlus$expandedGroups = ConcurrentHashMap.newKeySet();
+    @Unique
+    private volatile List<IElement<?>> jeiPlusPlus$sourceCache;
+    @Unique
+    private volatile List<IElement<?>> jeiPlusPlus$transformedCache;
+    @Unique
+    private volatile boolean jeiPlusPlus$cachedCreativeEnabled;
+    @Unique
+    private volatile boolean jeiPlusPlus$cachedGroupingEnabled;
+    @Unique
+    private volatile int jeiPlusPlus$cachedCreativeTab = -1;
 
     @Shadow
     public abstract void invalidateCache();
@@ -33,12 +44,38 @@ public abstract class IngredientFilterMixin implements IngredientListFeatureSour
     @Shadow
     protected abstract void notifyListenersOfChange();
 
+    @Inject(method = "invalidateCache", at = @At("HEAD"), remap = false)
+    private void jeiPlusPlus$invalidateTransformCache(CallbackInfo ci) {
+        jeiPlusPlus$sourceCache = null;
+        jeiPlusPlus$transformedCache = null;
+    }
+
     @Inject(method = "getElements", at = @At("RETURN"), cancellable = true, remap = false)
     private void jeiPlusPlus$transformElements(CallbackInfoReturnable<List<IElement<?>>> cir) {
-        if (!JeiPlusPlusConfig.CREATIVE_TAB_BAR_ENABLED.get() && !JeiPlusPlusConfig.STACK_GROUPING_ENABLED.get()) {
+        boolean creativeEnabled = JeiPlusPlusConfig.CREATIVE_TAB_BAR_ENABLED.get();
+        boolean groupingEnabled = JeiPlusPlusConfig.STACK_GROUPING_ENABLED.get();
+        if (!creativeEnabled && !groupingEnabled) {
             return;
         }
-        cir.setReturnValue(IngredientListFeatures.transform(this, cir.getReturnValue()));
+        List<IElement<?>> source = cir.getReturnValue();
+        int selectedTab = creativeEnabled ? jeiPlusPlus$getSelectedCreativeTab() : 0;
+        List<IElement<?>> cachedSource = jeiPlusPlus$sourceCache;
+        List<IElement<?>> cachedResult = jeiPlusPlus$transformedCache;
+        if (source == cachedSource
+            && cachedResult != null
+            && creativeEnabled == jeiPlusPlus$cachedCreativeEnabled
+            && groupingEnabled == jeiPlusPlus$cachedGroupingEnabled
+            && selectedTab == jeiPlusPlus$cachedCreativeTab) {
+            cir.setReturnValue(cachedResult);
+            return;
+        }
+        List<IElement<?>> transformed = IngredientListFeatures.transform(this, source);
+        jeiPlusPlus$cachedCreativeEnabled = creativeEnabled;
+        jeiPlusPlus$cachedGroupingEnabled = groupingEnabled;
+        jeiPlusPlus$cachedCreativeTab = selectedTab;
+        jeiPlusPlus$sourceCache = source;
+        jeiPlusPlus$transformedCache = transformed;
+        cir.setReturnValue(transformed);
     }
 
     @Override

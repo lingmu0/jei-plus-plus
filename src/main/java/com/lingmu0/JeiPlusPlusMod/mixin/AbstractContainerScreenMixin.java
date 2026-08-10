@@ -47,4 +47,49 @@ public abstract class AbstractContainerScreenMixin {
         graphics.fill(slot.x + 15, slot.y, slot.x + 16, slot.y + 16, border);
         graphics.pose().popPose();
     }
+
+    /**
+     * Network terminals render fake storage entries through their screen
+     * override, so the renderSlot injection above does not see them. Use the
+     * optional slot's runtime class name to keep every integration optional.
+     */
+    @Inject(method = "render", at = @At("TAIL"))
+    private void jeiPlusPlus$highlightNetworkStorage(
+        GuiGraphics graphics,
+        int mouseX,
+        int mouseY,
+        float partialTick,
+        CallbackInfo ci
+    ) {
+        if (!RecipeTreeFavorites.isActive()) {
+            return;
+        }
+        AbstractContainerScreen<?> screen = (AbstractContainerScreen<?>) (Object) this;
+        for (Slot slot : screen.getMenu().slots) {
+            if (!RecipeTreeFavorites.isNetworkStorageSlot(slot) || slot.getItem().isEmpty()) {
+                continue;
+            }
+            boolean intermediate = RecipeTreeFavorites.isIntermediate(slot.getItem());
+            boolean required = RecipeTreeFavorites.isRequired(slot.getItem());
+            if (!intermediate && !required) {
+                continue;
+            }
+            int fill = intermediate ? 0x44FF2222 : 0x3300BBFF;
+            int border = intermediate ? 0xDDFF5555 : 0xCC55DDFF;
+            // render() has already restored the screen pose after drawing
+            // the container.  Unlike renderSlot(), the slot coordinates are
+            // therefore relative to the container and must be translated to
+            // the screen's GUI origin before drawing the overlay.
+            int x = screen.getGuiLeft() + slot.x;
+            int y = screen.getGuiTop() + slot.y;
+            graphics.pose().pushPose();
+            graphics.pose().translate(0, 0, 300);
+            graphics.fill(x, y, x + 16, y + 16, fill);
+            graphics.fill(x, y, x + 16, y + 1, border);
+            graphics.fill(x, y + 15, x + 16, y + 16, border);
+            graphics.fill(x, y, x + 1, y + 16, border);
+            graphics.fill(x + 15, y, x + 16, y + 16, border);
+            graphics.pose().popPose();
+        }
+    }
 }

@@ -41,6 +41,8 @@ public final class StackGroupManager {
 
     private static volatile List<JsonGroup> jsonGroups = List.of();
     private static volatile Map<Path, FileStamp> fileStamps = EMPTY_STAMPS;
+    private static volatile List<GroupDefinition> definitionsCache = List.of();
+    private static volatile String definitionsCacheSignature = "";
     private static long nextRescanNanos;
 
     private StackGroupManager() {
@@ -125,86 +127,117 @@ public final class StackGroupManager {
     /** Returns the current ordered group definitions. */
     public static List<GroupDefinition> getDefinitions() {
         reloadJsonGroupsIfNeeded();
+        String signature = definitionSignature();
+        if (signature.equals(definitionsCacheSignature)) {
+            return definitionsCache;
+        }
 
-        Map<String, JsonGroup> overrides = new HashMap<>();
-        List<JsonGroup> customGroups = new ArrayList<>();
-        if (JeiPlusPlusConfig.JSON_GROUPING_ENABLED.get()) {
-            for (JsonGroup group : jsonGroups) {
-                if (isDefaultOverride(group)) {
-                    overrides.put(group.id(), group);
-                } else if (group.enabled && (!"tag".equals(group.type) || JeiPlusPlusConfig.TAG_GROUPING_ENABLED.get())) {
-                    if (group.hasMatcher) {
-                        customGroups.add(group);
+        // Config callbacks and background list rebuilds can observe this
+        // method from different threads. Avoid publishing a partially
+        // rebuilt matcher list.
+        synchronized (StackGroupManager.class) {
+            reloadJsonGroupsIfNeeded();
+            signature = definitionSignature();
+            if (signature.equals(definitionsCacheSignature)) {
+                return definitionsCache;
+            }
+
+            Map<String, JsonGroup> overrides = new HashMap<>();
+            List<JsonGroup> customGroups = new ArrayList<>();
+            if (JeiPlusPlusConfig.JSON_GROUPING_ENABLED.get()) {
+                for (JsonGroup group : jsonGroups) {
+                    if (isDefaultOverride(group)) {
+                        overrides.put(group.id(), group);
+                    } else if (group.enabled && (!"tag".equals(group.type) || JeiPlusPlusConfig.TAG_GROUPING_ENABLED.get())) {
+                        if (group.hasMatcher) {
+                            customGroups.add(group);
+                        }
                     }
                 }
             }
-        }
 
-        List<GroupDefinition> definitions = new ArrayList<>();
-        for (JsonGroup group : customGroups) {
-            definitions.add(new GroupDefinition(
-                group.id,
-                group.priority,
-                getJsonLabel(group, "tag".equals(group.type) ? "jei_plus_plus.group.tag" : "jei_plus_plus.group.json"),
-                group.matcher,
-                false,
-                false,
-                true
-            ));
-        }
-        for (StackGroupCatalog.DefaultGroup group : StackGroupCatalog.DEFAULT_GROUPS) {
-            JsonGroup override = findDefaultOverride(overrides, group.id());
-            if (override != null) {
-                if (!override.enabled) {
-                    continue;
-                }
-                if (override.hasMatcher && override.matcher != null) {
-                    if ("tag".equals(override.type) && !JeiPlusPlusConfig.TAG_GROUPING_ENABLED.get()) {
-                        override = null;
-                    } else {
-                        definitions.add(new GroupDefinition(
-                            override.id,
-                            override.priority,
-                            getJsonLabel(override, group.translationKey()),
-                            override.matcher,
-                            false,
-                            false,
-                            true
-                        ));
+            List<GroupDefinition> definitions = new ArrayList<>();
+            for (JsonGroup group : customGroups) {
+                definitions.add(new GroupDefinition(
+                    group.id,
+                    group.priority,
+                    getJsonLabel(group, "tag".equals(group.type) ? "jei_plus_plus.group.tag" : "jei_plus_plus.group.json"),
+                    group.matcher,
+                    false,
+                    false,
+                    true
+                ));
+            }
+            for (StackGroupCatalog.DefaultGroup group : StackGroupCatalog.DEFAULT_GROUPS) {
+                JsonGroup override = findDefaultOverride(overrides, group.id());
+                if (override != null) {
+                    if (!override.enabled) {
                         continue;
                     }
+                    if (override.hasMatcher && override.matcher != null) {
+                        if ("tag".equals(override.type) && !JeiPlusPlusConfig.TAG_GROUPING_ENABLED.get()) {
+                            override = null;
+                        } else {
+                            definitions.add(new GroupDefinition(
+                                override.id,
+                                override.priority,
+                                getJsonLabel(override, group.translationKey()),
+                                override.matcher,
+                                false,
+                                false,
+                                true
+                            ));
+                            continue;
+                        }
+                    }
                 }
+                if (!JeiPlusPlusConfig.isDefaultGroupEnabled(group.id())) {
+                    continue;
+                }
+                definitions.add(new GroupDefinition(
+                    group.id(),
+                    0,
+                    Component.translatable(group.translationKey()),
+                    stack -> matchesDefaultGroup(group, stack),
+                    true,
+                    false,
+                    JeiPlusPlusConfig.MIX_NAMESPACE_GROUPS.get()
+                ));
             }
-            if (!JeiPlusPlusConfig.isDefaultGroupEnabled(group.id())) {
-                continue;
+
+            if (JeiPlusPlusConfig.NBT_GROUPING_ENABLED.get()) {
+                definitions.add(new GroupDefinition(
+                    "nbt",
+                    Integer.MIN_VALUE,
+                    Component.empty(),
+                    stack -> true,
+                    false,
+                    true,
+                    true
+                ));
             }
-            definitions.add(new GroupDefinition(
-                group.id(),
-                0,
-                Component.translatable(group.translationKey()),
-                stack -> matchesDefaultGroup(group, stack),
-                true,
-                false,
-                JeiPlusPlusConfig.MIX_NAMESPACE_GROUPS.get()
-            ));
-        }
 
-        if (JeiPlusPlusConfig.NBT_GROUPING_ENABLED.get()) {
-            definitions.add(new GroupDefinition(
-                "nbt",
-                Integer.MIN_VALUE,
-                Component.empty(),
-                stack -> true,
-                false,
-                true,
-                true
-            ));
+            // JSON groups are collected before the built-ins, so equal priorities
+            // give the user-defined group precedence.  List.sort is stable.
+            definitions.sort(Comparator.comparingInt(GroupDefinition::priority).reversed());
+            List<GroupDefinition> immutable = List.copyOf(definitions);
+            definitionsCacheSignature = signature;
+            definitionsCache = immutable;
+            return immutable;
         }
+    }
 
-        // JSON groups are collected before the built-ins, so equal priorities
-        // give the user-defined group precedence.  List.sort is stable.
-        definitions.sort(Comparator.comparingInt(GroupDefinition::priority).reversed());
-        return List.copyOf(definitions);
+    private static String definitionSignature() {
+        StringBuilder signature = new StringBuilder(96)
+            .append(System.identityHashCode(jsonGroups)).append('|')
+            .append(JeiPlusPlusConfig.JSON_GROUPING_ENABLED.get()).append('|')
+            .append(JeiPlusPlusConfig.TAG_GROUPING_ENABLED.get()).append('|')
+            .append(JeiPlusPlusConfig.NBT_GROUPING_ENABLED.get()).append('|')
+            .append(JeiPlusPlusConfig.MIX_NAMESPACE_GROUPS.get());
+        for (StackGroupCatalog.DefaultGroup group : StackGroupCatalog.DEFAULT_GROUPS) {
+            signature.append('|').append(group.id()).append('=').append(JeiPlusPlusConfig.isDefaultGroupEnabled(group.id()));
+        }
+        return signature.toString();
     }
 
     public static Match findMatch(ItemStack stack, List<GroupDefinition> definitions) {
@@ -266,7 +299,7 @@ public final class StackGroupManager {
         return value.indexOf('.') >= 0 || value.indexOf(':') >= 0;
     }
 
-    private static void reloadJsonGroupsIfNeeded() {
+    private static synchronized void reloadJsonGroupsIfNeeded() {
         long now = System.nanoTime();
         if (now < nextRescanNanos) {
             return;

@@ -17,10 +17,12 @@ import mezz.jei.gui.input.UserInput;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,13 +83,24 @@ public final class IngredientListFeatures {
         List<StackGroupManager.GroupDefinition> definitions = StackGroupManager.getDefinitions();
         Map<String, GroupBuilder> groups = new LinkedHashMap<>();
         Map<Integer, String> groupAtIndex = new LinkedHashMap<>();
+        // Matchers operate on the registered item, not on the stack count or
+        // NBT. Cache the result so every potion/enchantment variant does not
+        // re-run all tag, regex, and suffix matchers.
+        Map<Item, StackGroupManager.Match> matchCache = new HashMap<>();
         for (int i = 0; i < original.size(); i++) {
             IElement<?> element = original.get(i);
             Optional<ItemStack> stack = element.getTypedIngredient().getItemStack();
             if (stack.isEmpty()) {
                 continue;
             }
-            StackGroupManager.Match match = StackGroupManager.findMatch(stack.get(), definitions);
+            Item item = stack.get().getItem();
+            StackGroupManager.Match match;
+            if (matchCache.containsKey(item)) {
+                match = matchCache.get(item);
+            } else {
+                match = StackGroupManager.findMatch(stack.get(), definitions);
+                matchCache.put(item, match);
+            }
             if (match == null) {
                 continue;
             }
