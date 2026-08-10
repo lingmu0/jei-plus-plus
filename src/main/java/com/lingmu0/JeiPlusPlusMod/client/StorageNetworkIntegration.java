@@ -176,7 +176,7 @@ final class StorageNetworkIntegration {
         return Ae2StorageIntegration.takeCraftingResult(menu, resultSlot, send);
     }
 
-    /** Only AE2 currently exposes a safe client-side cursor-to-network hook. */
+    /** Uses each network terminal's own cursor-insertion hook when available. */
     static Boolean putCarriedItemIntoNetwork(Object menu, boolean single) {
         Boolean ae2 = Ae2StorageIntegration.putCarriedItemIntoNetwork(menu, single);
         if (ae2 != null) {
