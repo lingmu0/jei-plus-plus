@@ -6,11 +6,8 @@ import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeSession;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeSidebarButton;
 import com.mojang.blaze3d.platform.InputConstants;
 import mezz.jei.api.gui.handlers.IGuiProperties;
-import mezz.jei.api.runtime.IScreenHelper;
-import mezz.jei.common.config.IClientToggleState;
 import mezz.jei.common.input.IInternalKeyMappings;
 import mezz.jei.common.util.ImmutableRect2i;
-import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.input.IUserInputHandler;
 import mezz.jei.gui.input.UserInput;
 import mezz.jei.gui.input.handlers.CombinedInputHandler;
@@ -39,20 +36,22 @@ public abstract class BookmarkOverlayMixin {
 
     @Unique private RecipeTreeSidebarButton jeiPlusPlus$treeButton;
 
-    @Inject(method = "<init>", at = @At("RETURN"), remap = false)
-    private void jeiPlusPlus$createTreeButton(
-        BookmarkList bookmarkList,
-        IngredientGridWithNavigation contents,
-        IClientToggleState toggleState,
-        IScreenHelper screenHelper,
-        IInternalKeyMappings keyBindings,
-        CallbackInfo ci
-    ) {
-        this.jeiPlusPlus$treeButton = new RecipeTreeSidebarButton();
+    /**
+     * JEI's BookmarkOverlay constructor is not a stable extension point. JEI
+     * 15.20 has five parameters while 15.21 adds the lookup-history overlay
+     * and client config. Creating our button lazily keeps this mixin valid for
+     * both signatures (and for later JEI patch releases).
+     */
+    @Unique
+    private void jeiPlusPlus$ensureTreeButton() {
+        if (jeiPlusPlus$treeButton == null) {
+            jeiPlusPlus$treeButton = new RecipeTreeSidebarButton();
+        }
     }
 
     @Inject(method = "updateBounds", at = @At("TAIL"), remap = false)
     private void jeiPlusPlus$placeTreeButton(IGuiProperties guiProperties, CallbackInfo ci) {
+        jeiPlusPlus$ensureTreeButton();
         int leftWidth = Math.max(0, guiProperties.getGuiLeft());
         ImmutableRect2i bookmarkArea = new ImmutableRect2i(0, 0, leftWidth, guiProperties.getScreenHeight())
             .insetBy(6);
@@ -76,6 +75,7 @@ public abstract class BookmarkOverlayMixin {
         if (!jeiPlusPlus$isTreeButtonScreen()) {
             return;
         }
+        jeiPlusPlus$ensureTreeButton();
         if (Minecraft.getInstance().screen instanceof RecipeTreeScreen) {
             jeiPlusPlus$treeButton.updateBounds(new ImmutableRect2i(6, minecraft.getWindow().getGuiScaledHeight() - 26, 20, 20));
         }
@@ -86,14 +86,16 @@ public abstract class BookmarkOverlayMixin {
 
     @Inject(method = "drawTooltips", at = @At("TAIL"), remap = false)
     private void jeiPlusPlus$drawTreeButtonTooltip(Minecraft minecraft, GuiGraphics graphics, int mouseX, int mouseY,
-                                                    CallbackInfo ci) {
+        CallbackInfo ci) {
         if (jeiPlusPlus$isTreeButtonScreen()) {
+            jeiPlusPlus$ensureTreeButton();
             jeiPlusPlus$treeButton.drawTooltips(graphics, mouseX, mouseY);
         }
     }
 
     @Inject(method = "createInputHandler", at = @At("RETURN"), cancellable = true, remap = false)
     private void jeiPlusPlus$addTreeButtonInput(CallbackInfoReturnable<IUserInputHandler> cir) {
+        jeiPlusPlus$ensureTreeButton();
         IUserInputHandler original = cir.getReturnValue();
         IUserInputHandler treeButtonInput = new CombinedInputHandler(
             "JeiPlusPlusRecipeTreeButton",

@@ -27,6 +27,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import net.minecraft.resources.ResourceLocation;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.Optional;
@@ -102,8 +103,42 @@ public abstract class BookmarkInputHandlerMixin {
             return Optional.empty();
         }
         ITypedIngredient<?> normalized = runtime.getIngredientManager().normalizeTypedIngredient(output.get());
-        return (Optional) Optional.of(new RecipeBookmark(
-            layout.getRecipeCategory(), layout.getRecipe(), recipeUid, normalized));
+        /*
+         * RecipeBookmark is an internal JEI value object and its constructor
+         * changed between 15.20 and 15.21.  Keep the addon binary-compatible
+         * with both lines instead of linking against either constructor
+         * signature: 15.20 uses four arguments, 15.21 uses an output-role
+         * argument, and the 19.x line uses a boolean output flag.
+         */
+        for (Constructor<?> constructor : RecipeBookmark.class.getDeclaredConstructors()) {
+            Class<?>[] parameterTypes = constructor.getParameterTypes();
+            Object[] arguments;
+            if (parameterTypes.length == 5 && parameterTypes[4] == RecipeIngredientRole.class) {
+                arguments = new Object[] {
+                    layout.getRecipeCategory(), layout.getRecipe(), recipeUid, normalized,
+                    RecipeIngredientRole.OUTPUT
+                };
+            } else if (parameterTypes.length == 5 && parameterTypes[4] == boolean.class) {
+                arguments = new Object[] {
+                    layout.getRecipeCategory(), layout.getRecipe(), recipeUid, normalized, true
+                };
+            } else if (parameterTypes.length == 4) {
+                arguments = new Object[] {
+                    layout.getRecipeCategory(), layout.getRecipe(), recipeUid, normalized
+                };
+            } else {
+                continue;
+            }
+            try {
+                if (!constructor.trySetAccessible()) {
+                    continue;
+                }
+                return (Optional) Optional.of(constructor.newInstance(arguments));
+            } catch (ReflectiveOperationException | SecurityException ignored) {
+                // Try the next known JEI constructor shape, if present.
+            }
+        }
+        return Optional.empty();
     }
 
     /**
