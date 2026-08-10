@@ -1,5 +1,6 @@
 package com.lingmu0.JeiPlusPlusMod.mixin;
 
+import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeFavorites;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeScreen;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeSession;
@@ -124,6 +125,9 @@ public abstract class BookmarkOverlayMixin {
             original
         );
         cir.setReturnValue(new ProxyInputHandler(() -> {
+            if (!JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get()) {
+                return original;
+            }
             if (Minecraft.getInstance().screen instanceof RecipeTreeScreen) {
                 return treeButtonInput;
             }
@@ -133,6 +137,9 @@ public abstract class BookmarkOverlayMixin {
 
     @Unique
     private boolean jeiPlusPlus$isTreeButtonScreen() {
+        if (!JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get()) {
+            return false;
+        }
         Screen screen = Minecraft.getInstance().screen;
         return screen instanceof RecipeTreeScreen
             || screen instanceof AbstractContainerScreen<?>

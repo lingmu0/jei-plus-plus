@@ -28,6 +28,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
@@ -73,6 +74,16 @@ public final class RecipeTreeFavorites {
             && !stack.isEmpty()
             && isActive()
             && intermediateIngredientKeys.contains(RecipeTreeData.ingredientKey(stack));
+    }
+
+    /** Network terminals often render fake storage slots outside JEI's normal slot hook. */
+    public static boolean isNetworkStorageSlot(Slot slot) {
+        if (slot == null) {
+            return false;
+        }
+        String name = slot.getClass().getName();
+        return name.endsWith(".RepoSlot")
+            || (name.contains("beyonddimensions") && name.contains("StackTypedSlot"));
     }
 
     public static void refreshThrottled() {
@@ -135,6 +146,9 @@ public final class RecipeTreeFavorites {
         elements = List.copyOf(next);
         requiredIngredientKeys = Set.copyOf(nextRequired);
         intermediateIngredientKeys = Set.copyOf(nextIntermediate);
+        Set<String> highlightedAeKeys = new HashSet<>(nextRequired);
+        highlightedAeKeys.addAll(nextIntermediate);
+        StorageNetworkIntegration.prioritizeVisibleEntries(highlightedAeKeys);
         signature = newSignature;
         if (changed && bookmarkList != null) {
             ((BookmarkListAccessor) (Object) bookmarkList).jeiPlusPlus$notifyListenersOfChange();

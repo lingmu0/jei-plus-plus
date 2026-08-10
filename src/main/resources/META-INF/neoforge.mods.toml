@@ -7,6 +7,9 @@ modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
 authors="${mod_authors}"
+# JEI++ only adds client-side JEI screens and recipe-tree helpers.  A server
+# does not need this mod installed for a client to connect.
+displayTest="IGNORE_ALL_VERSION"
 description='''${mod_description}'''
 
 [[mixins]]

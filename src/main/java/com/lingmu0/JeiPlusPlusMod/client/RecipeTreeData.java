@@ -35,8 +35,18 @@ public final class RecipeTreeData {
     public static final int MAX_DEPTH = 12;
     public static final int MAX_NODES = 384;
     private static final int MAX_CANDIDATE_SEARCH_DEPTH = 12;
+    /**
+     * Candidate resolution runs on the client thread while the recipe tree is
+     * opened.  A depth limit alone is not sufficient for large modpacks: a
+     * single ingredient can have hundreds of recipes and alternatives, which
+     * makes the recursive search grow exponentially.  This visit budget keeps
+     * the lookup responsive while still allowing normal multi-step chains to
+     * be resolved.
+     */
+    private static final int MAX_CANDIDATE_SEARCH_VISITS = 4096;
 
     private static final Map<String, List<RecipeRef>> CANDIDATE_CACHE = new HashMap<>();
+    private static final Map<String, List<RecipeSnapshot>> SNAPSHOT_CACHE = new HashMap<>();
 
     private RecipeTreeData() {
     }
@@ -435,7 +445,7 @@ public final class RecipeTreeData {
                     continue;
                 }
                 String choiceKey = path + "/" + snapshot.ref().key() + "/" + inputIndex;
-                SelectedInput selected = selectInput(input, choiceKey);
+                SelectedInput selected = selectInput(input, choiceKey, context.candidateBudget);
                 ItemStack selectedStack = selected.stack();
                 RecipeSnapshot childRecipe = preferredRecipe(selectedStack);
                 String childPath = choiceKey + "/" + ingredientKey(selectedStack);
@@ -455,7 +465,11 @@ public final class RecipeTreeData {
             activeRecipes.remove(recipeKey);
         }
 
-        private SelectedInput selectInput(RecipeInput input, String choiceKey) {
+        private SelectedInput selectInput(
+            RecipeInput input,
+            String choiceKey,
+            CandidateSearchBudget candidateBudget
+        ) {
             String selectedKey = inputSelections.get(choiceKey);
             if (selectedKey != null) {
                 for (ItemStack alternative : input.alternatives()) {
@@ -466,7 +480,10 @@ public final class RecipeTreeData {
                 inputSelections.remove(choiceKey);
             }
 
-            return findCandidateWithSupply(input.alternatives())
+            // Recursive candidate resolution is intentionally limited to the
+            // active recipe-tree build. Ordinary JEI lookups must not trigger
+            // a whole-modpack dependency search.
+            return findCandidateWithSupply(input.alternatives(), true, candidateBudget)
                 .map(stack -> new SelectedInput(stack, false))
                 .orElseGet(() -> new SelectedInput(input.first(), false));
         }
@@ -675,6 +692,7 @@ public final class RecipeTreeData {
 
     private static final class BuildContext {
         private int count;
+        private final CandidateSearchBudget candidateBudget = new CandidateSearchBudget();
 
         private void add() {
             count++;
@@ -820,32 +838,65 @@ public final class RecipeTreeData {
         }
 
         IRecipeManager manager = runtime.getRecipeManager();
-        IFocusFactory focusFactory = runtime.getJeiHelpers().getFocusFactory();
-        ItemStack focusStack = target.copy();
-        focusStack.setCount(1);
-        IFocus<ItemStack> focus = focusFactory.createFocus(
-            RecipeIngredientRole.OUTPUT,
-            VanillaTypes.ITEM_STACK,
-            focusStack
-        );
+        Optional<IFocus<ItemStack>> focus = createOutputFocus(runtime, target);
+        if (focus.isEmpty()) {
+            // Some third-party recipes expose placeholder or otherwise
+            // invalid ItemStacks (for example Chisel's generated BlockItems).
+            // JEI rejects those values when a focus is created. Treat them as
+            // having no discoverable recipes instead of letting a tree rebuild
+            // crash the client.
+            CANDIDATE_CACHE.put(cacheKey, List.of());
+            return List.of();
+        }
 
         List<RecipeRef> result = new ArrayList<>();
         manager.createRecipeCategoryLookup()
-            .limitFocus(List.of(focus))
+            .limitFocus(List.of(focus.get()))
             .get()
             .filter(RecipeTreeData::isSupportedCategory)
-            .forEach(category -> addCandidates(manager, category, focus, result));
+            .forEach(category -> addCandidates(manager, category, focus.get(), result));
         List<RecipeRef> immutable = List.copyOf(result);
         CANDIDATE_CACHE.put(cacheKey, immutable);
         return immutable;
     }
 
+    /**
+     * Creates an output focus for a tree target while tolerating invalid
+     * ItemStacks supplied by third-party recipe categories. JEI's public focus
+     * API throws IllegalArgumentException for those values.
+     */
+    public static Optional<IFocus<ItemStack>> createOutputFocus(IJeiRuntime runtime, ItemStack target) {
+        if (runtime == null || target == null || target.isEmpty()) {
+            return Optional.empty();
+        }
+        ItemStack focusStack = target.copy();
+        focusStack.setCount(1);
+        try {
+            return Optional.of(runtime.getJeiHelpers().getFocusFactory().createFocus(
+                RecipeIngredientRole.OUTPUT,
+                VanillaTypes.ITEM_STACK,
+                focusStack
+            ));
+        } catch (IllegalArgumentException ignored) {
+            return Optional.empty();
+        }
+    }
+
     public static List<RecipeSnapshot> candidateSnapshots(ItemStack target) {
         String key = ingredientKey(target);
-        return candidates(target).stream()
+        List<RecipeSnapshot> cached = SNAPSHOT_CACHE.get(key);
+        if (cached != null) {
+            return cached;
+        }
+        List<RecipeSnapshot> snapshots = candidates(target).stream()
             .map(RecipeTreeData::snapshot)
             .filter(snapshot -> snapshot != null && snapshot.produces(key))
             .toList();
+        // Recipe layouts are expensive to create. Reuse them for all inputs
+        // that ask for the same ingredient during one or more tree builds.
+        // The cache is cleared whenever JEI rebuilds its runtime.
+        SNAPSHOT_CACHE.put(key, snapshots);
+        return snapshots;
     }
 
     public static String ingredientKey(ItemStack stack) {
@@ -867,6 +918,7 @@ public final class RecipeTreeData {
 
     public static void clearCaches() {
         CANDIDATE_CACHE.clear();
+        SNAPSHOT_CACHE.clear();
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -988,6 +1040,11 @@ public final class RecipeTreeData {
                 add(result, stack, stack.getCount());
             }
         }
+        // Optional network storage is an additional source of supply for
+        // recipe-tree planning and candidate/highlight resolution.
+        for (StorageNetworkIntegration.StoredStack stored : StorageNetworkIntegration.storedStacks()) {
+            add(result, stored.stack(), stored.amount());
+        }
         return result;
     }
 
@@ -1005,7 +1062,24 @@ public final class RecipeTreeData {
      * always win over recursively craftable candidates, while candidate order
      * remains stable for ties.
      */
-    static Optional<ItemStack> findCandidateWithSupply(Collection<ItemStack> candidates) {
+    /**
+     * Resolves a candidate using inventory and, when requested, its recursive
+     * recipe dependencies. The recursive path is reserved for recipe-tree
+     * inputs/default resolutions; callers handling a normal JEI recipe can
+     * pass {@code false} and retain the direct-inventory behavior.
+     */
+    static Optional<ItemStack> findCandidateWithSupply(
+        Collection<ItemStack> candidates,
+        boolean recursive
+    ) {
+        return findCandidateWithSupply(candidates, recursive, new CandidateSearchBudget());
+    }
+
+    private static Optional<ItemStack> findCandidateWithSupply(
+        Collection<ItemStack> candidates,
+        boolean recursive,
+        CandidateSearchBudget budget
+    ) {
         if (candidates == null || candidates.isEmpty()) {
             return Optional.empty();
         }
@@ -1023,15 +1097,38 @@ public final class RecipeTreeData {
                 return Optional.of(candidate.copy());
             }
         }
+        if (!recursive) {
+            return Optional.empty();
+        }
 
         Map<String, List<RecipeSnapshot>> recipeCache = new HashMap<>();
+        CandidateSearchBudget searchBudget = budget == null ? new CandidateSearchBudget() : budget;
         for (ItemStack candidate : valid) {
             Map<String, Long> trial = new LinkedHashMap<>(available);
-            if (canSupplyCandidate(candidate, trial, new HashSet<>(), 0, recipeCache)) {
+            if (canSupplyCandidate(candidate, trial, new HashSet<>(), 0, recipeCache, searchBudget)) {
                 return Optional.of(candidate.copy());
+            }
+            if (searchBudget.exhausted()) {
+                break;
             }
         }
         return Optional.empty();
+    }
+
+    private static final class CandidateSearchBudget {
+        private int remaining = MAX_CANDIDATE_SEARCH_VISITS;
+
+        private boolean visit() {
+            if (remaining <= 0) {
+                return false;
+            }
+            remaining--;
+            return true;
+        }
+
+        private boolean exhausted() {
+            return remaining <= 0;
+        }
     }
 
     /**
@@ -1044,8 +1141,12 @@ public final class RecipeTreeData {
         Map<String, Long> available,
         Set<String> active,
         int depth,
-        Map<String, List<RecipeSnapshot>> recipeCache
+        Map<String, List<RecipeSnapshot>> recipeCache,
+        CandidateSearchBudget budget
     ) {
+        if (budget == null || !budget.visit()) {
+            return false;
+        }
         if (wanted == null || wanted.isEmpty()) {
             return true;
         }
@@ -1065,6 +1166,9 @@ public final class RecipeTreeData {
         setAvailable(base, key, 0);
         List<RecipeSnapshot> recipes = recipeCache.computeIfAbsent(key, ignored -> candidateSnapshots(wanted));
         for (RecipeSnapshot recipe : recipes) {
+            if (!budget.visit()) {
+                break;
+            }
             if (recipe == null || !recipe.produces(key) || recipe.inputs().isEmpty()) {
                 continue;
             }
@@ -1078,6 +1182,10 @@ public final class RecipeTreeData {
             for (RecipeInput input : recipe.inputs()) {
                 boolean alternativeAvailable = false;
                 for (ItemStack alternative : input.alternatives()) {
+                    if (!budget.visit()) {
+                        inputsAvailable = false;
+                        break;
+                    }
                     ItemStack requiredInput = copyWithCount(
                         alternative,
                         safeMultiply(alternative.getCount(), crafts)
@@ -1088,7 +1196,8 @@ public final class RecipeTreeData {
                         inputBranch,
                         new HashSet<>(active),
                         depth + 1,
-                        recipeCache
+                        recipeCache,
+                        budget
                     )) {
                         branch = inputBranch;
                         alternativeAvailable = true;
@@ -1129,6 +1238,7 @@ public final class RecipeTreeData {
     private static long availableAmount(Map<String, Long> available, String key) {
         return available.getOrDefault(key, 0L);
     }
+
 
     private static void setAvailable(Map<String, Long> available, String key, long amount) {
         if (amount <= 0) {
@@ -1248,6 +1358,11 @@ public final class RecipeTreeData {
                 amount = safeAdd(amount, present.getCount());
             }
         }
+        for (StorageNetworkIntegration.StoredStack stored : StorageNetworkIntegration.storedStacks()) {
+            if (ingredientKey(stored.stack()).equals(key)) {
+                amount = safeAdd(amount, stored.amount());
+            }
+        }
         return amount;
     }
 
@@ -1265,6 +1380,11 @@ public final class RecipeTreeData {
             ItemStack present = player.getInventory().getItem(slot);
             if (!present.isEmpty() && keys.contains(ingredientKey(present))) {
                 amount = safeAdd(amount, present.getCount());
+            }
+        }
+        for (StorageNetworkIntegration.StoredStack stored : StorageNetworkIntegration.storedStacks()) {
+            if (keys.contains(ingredientKey(stored.stack()))) {
+                amount = safeAdd(amount, stored.amount());
             }
         }
         return amount;

@@ -23,6 +23,7 @@ import net.minecraft.world.item.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 /** EMI-style viewer and crafting assistant for the active JEI recipe tree. */
 public final class RecipeTreeScreen extends Screen {
@@ -863,15 +864,12 @@ public final class RecipeTreeScreen extends Screen {
         if (runtime == null || node.stack().isEmpty()) {
             return;
         }
+        Optional<IFocus<ItemStack>> focus = RecipeTreeData.createOutputFocus(runtime, node.stack());
+        if (focus.isEmpty()) {
+            return;
+        }
         RecipeTreeSession.beginResolution(node, this);
-        ItemStack focusStack = node.stack().copy();
-        focusStack.setCount(1);
-        IFocus<ItemStack> focus = runtime.getJeiHelpers().getFocusFactory().createFocus(
-            RecipeIngredientRole.OUTPUT,
-            VanillaTypes.ITEM_STACK,
-            focusStack
-        );
-        runtime.getRecipesGui().show(focus);
+        runtime.getRecipesGui().show(focus.get());
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
