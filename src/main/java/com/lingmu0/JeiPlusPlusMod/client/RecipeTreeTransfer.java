@@ -70,8 +70,8 @@ public final class RecipeTreeTransfer {
         if (first == null) {
             return false;
         }
-        int chunk = transferChunk(first);
-        return chunk > 0 && runTransfer(first, chunk, false);
+        int chunk = transferChunk(first, first.batches(), recursive);
+        return chunk > 0 && runTransfer(first, chunk, false, recursive);
     }
 
     public static boolean transfer(RecipeTreeData.CraftStep step, boolean recursive) {
@@ -80,8 +80,8 @@ public final class RecipeTreeTransfer {
             if (!exposeParentContainer()) {
                 return false;
             }
-            int chunk = transferChunk(step);
-            return chunk > 0 && runTransfer(step, chunk, true);
+            int chunk = transferChunk(step, step == null ? 0 : step.batches(), false);
+            return chunk > 0 && runTransfer(step, chunk, true, false);
         }
 
         RecipeTreeData.Tree tree = RecipeTreeSession.craftingTree();
@@ -471,8 +471,8 @@ public final class RecipeTreeTransfer {
         // scaled JEI transfer can leave a second result sitting in the slot.
         int chunk = resultSlot >= 0
             ? 1
-            : transferChunk(craft.step, craft.remainingBatches);
-        if (chunk <= 0 || !runTransfer(craft.step, chunk, true)) {
+            : transferChunk(craft.step, craft.remainingBatches, true);
+        if (chunk <= 0 || !runTransfer(craft.step, chunk, true, true)) {
             clearPending();
             return false;
         }
@@ -500,10 +500,14 @@ public final class RecipeTreeTransfer {
     }
 
     private static int transferChunk(RecipeTreeData.CraftStep step) {
-        return transferChunk(step, step == null ? 0 : step.batches());
+        return transferChunk(step, step == null ? 0 : step.batches(), false);
     }
 
-    private static int transferChunk(RecipeTreeData.CraftStep step, long requested) {
+    private static int transferChunk(
+        RecipeTreeData.CraftStep step,
+        long requested,
+        boolean recursiveCandidates
+    ) {
         if (step == null || requested <= 0) {
             return 0;
         }
@@ -511,12 +515,21 @@ public final class RecipeTreeTransfer {
         if (layout == null) {
             return 0;
         }
-        int capacity = maxBatchesPerTransfer(layout.getRecipeSlotsView(), step.selectedInputs());
+        int capacity = maxBatchesPerTransfer(
+            layout.getRecipeSlotsView(),
+            step.selectedInputs(),
+            recursiveCandidates
+        );
         return (int) Math.max(1, Math.min(Math.min(Integer.MAX_VALUE, requested), capacity));
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private static boolean runTransfer(RecipeTreeData.CraftStep step, int batches, boolean doTransfer) {
+    private static boolean runTransfer(
+        RecipeTreeData.CraftStep step,
+        int batches,
+        boolean doTransfer,
+        boolean recursiveCandidates
+    ) {
         if (step == null || batches <= 0) {
             return false;
         }
@@ -541,18 +554,24 @@ public final class RecipeTreeTransfer {
         // for a fake-slot terminal where no generic handler can move items.
         boolean ae2Menu = Ae2StorageIntegration.isCraftingMenu(menu);
         if (!ae2Menu) {
-            Boolean generic = tryJeiTransfer(menu, layout, step.selectedInputs(), batches, player, doTransfer);
+            Boolean generic = tryJeiTransfer(
+                menu, layout, step.selectedInputs(), batches, player, doTransfer, recursiveCandidates
+            );
             if (Boolean.TRUE.equals(generic)) {
                 return true;
             }
         }
 
-        Boolean networkTransfer = tryNetworkCraftingTransfer(menu, layout, step.selectedInputs(), doTransfer);
+        Boolean networkTransfer = tryNetworkCraftingTransfer(
+            menu, layout, step.selectedInputs(), doTransfer, recursiveCandidates
+        );
         if (networkTransfer != null) {
             return networkTransfer;
         }
         return ae2Menu
-            ? tryJeiTransfer(menu, layout, step.selectedInputs(), batches, player, doTransfer)
+            ? tryJeiTransfer(
+                menu, layout, step.selectedInputs(), batches, player, doTransfer, recursiveCandidates
+            )
             : false;
     }
 
@@ -563,7 +582,8 @@ public final class RecipeTreeTransfer {
         List<String> selectedInputs,
         int batches,
         Player player,
-        boolean doTransfer
+        boolean doTransfer,
+        boolean recursiveCandidates
     ) {
         IRecipeTransferManager manager = Internal.getJeiRuntime().getRecipeTransferManager();
         Optional<IRecipeTransferHandler<AbstractContainerMenu, Object>> handler = (Optional) manager
@@ -572,7 +592,9 @@ public final class RecipeTreeTransfer {
             return false;
         }
 
-        IRecipeSlotsView slots = adjustInputs(layout.getRecipeSlotsView(), selectedInputs, batches);
+        IRecipeSlotsView slots = adjustInputs(
+            layout.getRecipeSlotsView(), selectedInputs, batches, recursiveCandidates
+        );
         try {
             IRecipeTransferError error = handler.get().transferRecipe(
                 menu,
@@ -619,7 +641,8 @@ public final class RecipeTreeTransfer {
     private static IRecipeSlotsView adjustInputs(
         IRecipeSlotsView original,
         List<String> selectedInputs,
-        int batches
+        int batches,
+        boolean recursiveCandidates
     ) {
         List<IRecipeSlotView> adjusted = new ArrayList<>();
         int inputIndex = 0;
@@ -627,7 +650,8 @@ public final class RecipeTreeTransfer {
             if (slot.getRole() == RecipeIngredientRole.INPUT) {
                 String selected = preferredInputKey(
                     slot,
-                    inputIndex < selectedInputs.size() ? selectedInputs.get(inputIndex) : ""
+                    inputIndex < selectedInputs.size() ? selectedInputs.get(inputIndex) : "",
+                    recursiveCandidates
                 );
                 adjusted.add(new AdjustedSlot(slot, selected, batches));
                 inputIndex++;
@@ -639,7 +663,11 @@ public final class RecipeTreeTransfer {
         return () -> immutable;
     }
 
-    private static int maxBatchesPerTransfer(IRecipeSlotsView slots, List<String> selectedInputs) {
+    private static int maxBatchesPerTransfer(
+        IRecipeSlotsView slots,
+        List<String> selectedInputs,
+        boolean recursiveCandidates
+    ) {
         int result = Integer.MAX_VALUE;
         int inputIndex = 0;
         boolean foundItemInput = false;
@@ -649,7 +677,8 @@ public final class RecipeTreeTransfer {
             }
             String selected = preferredInputKey(
                 slot,
-                inputIndex < selectedInputs.size() ? selectedInputs.get(inputIndex) : ""
+                inputIndex < selectedInputs.size() ? selectedInputs.get(inputIndex) : "",
+                recursiveCandidates
             );
             inputIndex++;
             int slotCapacity = slot.getItemStacks()
@@ -672,18 +701,22 @@ public final class RecipeTreeTransfer {
      * inventory or can be reached by recursively crafting its inputs. Resolve
      * a concrete candidate at transfer time instead.
      */
-    private static String preferredInputKey(IRecipeSlotView slot, String selectedKey) {
+    private static String preferredInputKey(
+        IRecipeSlotView slot,
+        String selectedKey,
+        boolean recursiveCandidates
+    ) {
         if (!selectedKey.isEmpty()) {
             return selectedKey;
         }
-        // A regular JEI transfer must remain cheap. Recursive dependency
-        // search is only enabled while a recipe tree (and its defaults) is
-        // active; otherwise use the direct inventory match or JEI's normal
-        // first candidate fallback.
+        // A normal left-click is deliberately direct-only. Recursive
+        // candidate search is reserved for the explicit Shift-click crafting
+        // path; otherwise use only an inventory/network match or JEI's normal
+        // first-candidate fallback.
         return RecipeTreeData.findCandidateWithSupply(slot.getItemStacks()
                 .filter(stack -> !stack.isEmpty())
                 .toList(),
-            RecipeTreeSession.tree() != null)
+            recursiveCandidates && RecipeTreeSession.tree() != null)
             .map(RecipeTreeData::ingredientKey)
             .orElse("");
     }
@@ -718,12 +751,13 @@ public final class RecipeTreeTransfer {
         AbstractContainerMenu menu,
         IRecipeLayoutDrawable<?> layout,
         List<String> selectedInputs,
-        boolean doTransfer
+        boolean doTransfer,
+        boolean recursiveCandidates
     ) {
         if (!(layout.getRecipe() instanceof CraftingRecipe)) {
             return null;
         }
-        List<ItemStack> templates = ae2Templates(layout, selectedInputs);
+        List<ItemStack> templates = ae2Templates(layout, selectedInputs, recursiveCandidates);
         if (templates == null) {
             return null;
         }
@@ -742,13 +776,14 @@ public final class RecipeTreeTransfer {
         if (layout == null) {
             return false;
         }
-        List<ItemStack> templates = ae2Templates(layout, step.selectedInputs());
+        List<ItemStack> templates = ae2Templates(layout, step.selectedInputs(), true);
         return templates == null ? false : StorageNetworkIntegration.craftingGridMatches(menu, templates);
     }
 
     private static List<ItemStack> ae2Templates(
         IRecipeLayoutDrawable<?> layout,
-        List<String> selectedInputs
+        List<String> selectedInputs,
+        boolean recursiveCandidates
     ) {
         List<IRecipeSlotView> inputs = layout.getRecipeSlotsView().getSlotViews().stream()
             .filter(slot -> slot.getRole() == RecipeIngredientRole.INPUT)
@@ -762,7 +797,8 @@ public final class RecipeTreeTransfer {
             IRecipeSlotView input = inputs.get(index);
             String selected = preferredInputKey(
                 input,
-                index < selectedInputs.size() ? selectedInputs.get(index) : ""
+                index < selectedInputs.size() ? selectedInputs.get(index) : "",
+                recursiveCandidates
             );
             ItemStack template = input.getItemStacks()
                 .filter(stack -> !stack.isEmpty())
