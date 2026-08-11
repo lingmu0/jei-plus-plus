@@ -47,6 +47,11 @@ public final class RecipeTreeData {
 
     private static final Map<String, List<RecipeRef>> CANDIDATE_CACHE = new HashMap<>();
     private static final Map<String, List<RecipeSnapshot>> SNAPSHOT_CACHE = new HashMap<>();
+    private static final Map<String, IRecipeLayoutDrawable<?>> LAYOUT_CACHE = new HashMap<>();
+    private static CandidateContext cachedCandidateContext;
+    private static Object cachedCandidateMenu;
+    private static long cachedCandidateGameTime = Long.MIN_VALUE;
+    private static long cachedCandidateStorageRevision = Long.MIN_VALUE;
 
     private RecipeTreeData() {
     }
@@ -255,6 +260,14 @@ public final class RecipeTreeData {
         private Node root;
         private long batches = 1;
         private boolean craftingMode;
+        private Analysis cachedAnalysis;
+        private List<CraftStep> cachedCraftingSteps;
+        private long cachedAnalysisTick = Long.MIN_VALUE;
+        private long cachedAnalysisStorageRevision = Long.MIN_VALUE;
+        private int analysisRevision;
+        private int cachedAnalysisRevision = -1;
+        private long cachedCraftingStepsTick = Long.MIN_VALUE;
+        private int cachedCraftingStepsRevision = -1;
 
         private Tree(RecipeSnapshot rootRecipe, ItemStack rootStack) {
             this.rootRecipe = rootRecipe;
@@ -271,7 +284,11 @@ public final class RecipeTreeData {
         }
 
         public void setBatches(long batches) {
-            this.batches = Math.max(1, Math.min(1_000_000L, batches));
+            long clamped = Math.max(1, Math.min(1_000_000L, batches));
+            if (this.batches != clamped) {
+                this.batches = clamped;
+                invalidateAnalysis();
+            }
         }
 
         public boolean craftingMode() {
@@ -279,7 +296,10 @@ public final class RecipeTreeData {
         }
 
         public void setCraftingMode(boolean craftingMode) {
-            this.craftingMode = craftingMode;
+            if (this.craftingMode != craftingMode) {
+                this.craftingMode = craftingMode;
+                invalidateAnalysis();
+            }
         }
 
         public void resolve(String ingredientKey, RecipeRef recipe) {
@@ -315,6 +335,7 @@ public final class RecipeTreeData {
         }
 
         public void rebuild() {
+            invalidateAnalysis();
             BuildContext context = new BuildContext();
             root = new Node(rootStack, rootRecipe);
             context.add();
@@ -326,6 +347,14 @@ public final class RecipeTreeData {
         }
 
         public Analysis analyze() {
+            long gameTime = analysisGameTime();
+            long storageRevision = StorageNetworkIntegration.snapshotRevision();
+            if (cachedAnalysis != null
+                && cachedAnalysisRevision == analysisRevision
+                && cachedAnalysisTick == gameTime
+                && cachedAnalysisStorageRevision == storageRevision) {
+                return cachedAnalysis;
+            }
             Map<String, MutableCost> totalCosts = new LinkedHashMap<>();
             Map<String, MutableCost> totalRemainders = new LinkedHashMap<>();
             resetProgress(root);
@@ -351,16 +380,29 @@ public final class RecipeTreeData {
                 .filter(cost -> cost.amount > 0)
                 .map(cost -> new Cost(cost.stack.copy(), cost.alternatives, cost.amount, 0))
                 .toList();
-            return new Analysis(List.copyOf(costs), leftovers);
+            cachedAnalysis = new Analysis(List.copyOf(costs), leftovers);
+            cachedAnalysisRevision = analysisRevision;
+            cachedAnalysisTick = gameTime;
+            cachedAnalysisStorageRevision = storageRevision;
+            cachedCraftingSteps = null;
+            return cachedAnalysis;
         }
 
         public List<CraftStep> craftingSteps() {
             analyze();
+            if (cachedCraftingSteps != null
+                && cachedCraftingStepsRevision == cachedAnalysisRevision
+                && cachedCraftingStepsTick == cachedAnalysisTick) {
+                return cachedCraftingSteps;
+            }
             Map<String, MutableCraftStep> steps = new LinkedHashMap<>();
             collectCraftSteps(root, steps, false);
-            return steps.values().stream()
+            cachedCraftingSteps = steps.values().stream()
                 .map(MutableCraftStep::freeze)
                 .toList();
+            cachedCraftingStepsRevision = cachedAnalysisRevision;
+            cachedCraftingStepsTick = cachedAnalysisTick;
+            return cachedCraftingSteps;
         }
 
         /** Missing craftable dependencies first, followed by the clicked product. */
@@ -385,7 +427,25 @@ public final class RecipeTreeData {
             }
             List<CraftStep> steps = new ArrayList<>();
             collectTargetSubtrees(root, targets, false, steps);
-            return List.copyOf(steps);
+            List<CraftStep> result = List.copyOf(steps);
+            invalidateAnalysis();
+            return result;
+        }
+
+        private void invalidateAnalysis() {
+            analysisRevision++;
+            cachedAnalysis = null;
+            cachedCraftingSteps = null;
+            cachedAnalysisTick = Long.MIN_VALUE;
+            cachedAnalysisStorageRevision = Long.MIN_VALUE;
+            cachedCraftingStepsTick = Long.MIN_VALUE;
+            cachedAnalysisRevision = -1;
+            cachedCraftingStepsRevision = -1;
+        }
+
+        private static long analysisGameTime() {
+            var level = net.minecraft.client.Minecraft.getInstance().level;
+            return level == null ? Long.MIN_VALUE : level.getGameTime();
         }
 
         private void forceTargetProgress(Node target) {
@@ -444,7 +504,7 @@ public final class RecipeTreeData {
                     continue;
                 }
                 String choiceKey = path + "/" + snapshot.ref().key() + "/" + inputIndex;
-                SelectedInput selected = selectInput(input, choiceKey, context.candidateBudget);
+                SelectedInput selected = selectInput(input, choiceKey, context);
                 ItemStack selectedStack = selected.stack();
                 RecipeSnapshot childRecipe = preferredRecipe(selectedStack);
                 String childPath = choiceKey + "/" + ingredientKey(selectedStack);
@@ -467,7 +527,7 @@ public final class RecipeTreeData {
         private SelectedInput selectInput(
             RecipeInput input,
             String choiceKey,
-            CandidateSearchBudget candidateBudget
+            BuildContext context
         ) {
             String selectedKey = inputSelections.get(choiceKey);
             if (selectedKey != null) {
@@ -481,7 +541,12 @@ public final class RecipeTreeData {
             // Recursive candidate resolution is intentionally limited to the
             // active recipe-tree build. Ordinary JEI lookups must not trigger
             // a whole-modpack dependency search.
-            return findCandidateWithSupply(input.alternatives(), true, candidateBudget)
+            return findCandidateWithSupply(
+                input.alternatives(),
+                true,
+                context.candidateContext,
+                context.candidateBudget
+            )
                 .map(stack -> new SelectedInput(stack, false))
                 .orElseGet(() -> new SelectedInput(input.first(), false));
         }
@@ -691,6 +756,7 @@ public final class RecipeTreeData {
     private static final class BuildContext {
         private int count;
         private final CandidateSearchBudget candidateBudget = new CandidateSearchBudget();
+        private final CandidateContext candidateContext = candidateContext();
 
         private void add() {
             count++;
@@ -721,6 +787,16 @@ public final class RecipeTreeData {
     }
 
     private record SelectedInput(ItemStack stack, boolean explicit) {
+    }
+
+    /** One inventory/network snapshot shared by candidate checks in a tick. */
+    private static final class CandidateContext {
+        private final Map<String, Long> available;
+        private final Map<String, List<RecipeSnapshot>> recipeCache = new HashMap<>();
+
+        private CandidateContext(Map<String, Long> available) {
+            this.available = available;
+        }
     }
 
     private static final class MutableCraftStep {
@@ -814,12 +890,17 @@ public final class RecipeTreeData {
         if (runtime == null || ref == null || !isSupportedCategory(ref.category())) {
             return Optional.empty();
         }
+        IRecipeLayoutDrawable<?> cached = LAYOUT_CACHE.get(ref.key());
+        if (cached != null) {
+            return Optional.of(cached);
+        }
         IFocusGroup emptyFocus = runtime.getJeiHelpers().getFocusFactory().getEmptyFocusGroup();
         Optional<IRecipeLayoutDrawable<Object>> layout = runtime.getRecipeManager().createRecipeLayoutDrawable(
             (IRecipeCategory) ref.category(),
             ref.recipe(),
             emptyFocus
         );
+        layout.ifPresent(value -> LAYOUT_CACHE.put(ref.key(), value));
         return (Optional) layout;
     }
 
@@ -917,6 +998,11 @@ public final class RecipeTreeData {
     public static void clearCaches() {
         CANDIDATE_CACHE.clear();
         SNAPSHOT_CACHE.clear();
+        LAYOUT_CACHE.clear();
+        cachedCandidateContext = null;
+        cachedCandidateMenu = null;
+        cachedCandidateGameTime = Long.MIN_VALUE;
+        cachedCandidateStorageRevision = Long.MIN_VALUE;
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -1052,6 +1138,25 @@ public final class RecipeTreeData {
         return result;
     }
 
+    private static CandidateContext candidateContext() {
+        Object menu = Ae2StorageIntegration.activeMenu();
+        var level = net.minecraft.client.Minecraft.getInstance().level;
+        long gameTime = level == null ? -1L : level.getGameTime();
+        long storageRevision = StorageNetworkIntegration.snapshotRevision();
+        if (cachedCandidateContext != null
+            && cachedCandidateMenu == menu
+            && cachedCandidateGameTime == gameTime
+            && cachedCandidateStorageRevision == storageRevision) {
+            return cachedCandidateContext;
+        }
+        CandidateContext context = new CandidateContext(playerInventoryAmounts());
+        cachedCandidateContext = context;
+        cachedCandidateMenu = menu;
+        cachedCandidateGameTime = gameTime;
+        cachedCandidateStorageRevision = storageRevision;
+        return context;
+    }
+
     /**
      * Finds the first candidate that is directly in the inventory or can be
      * supplied by recursively crafting its inputs. Direct inventory matches
@@ -1068,12 +1173,18 @@ public final class RecipeTreeData {
         Collection<ItemStack> candidates,
         boolean recursive
     ) {
-        return findCandidateWithSupply(candidates, recursive, new CandidateSearchBudget());
+        return findCandidateWithSupply(
+            candidates,
+            recursive,
+            candidateContext(),
+            new CandidateSearchBudget()
+        );
     }
 
     private static Optional<ItemStack> findCandidateWithSupply(
         Collection<ItemStack> candidates,
         boolean recursive,
+        CandidateContext context,
         CandidateSearchBudget budget
     ) {
         if (candidates == null || candidates.isEmpty()) {
@@ -1087,7 +1198,8 @@ public final class RecipeTreeData {
             return Optional.empty();
         }
 
-        Map<String, Long> available = playerInventoryAmounts();
+        CandidateContext resolvedContext = context == null ? candidateContext() : context;
+        Map<String, Long> available = resolvedContext.available;
         for (ItemStack candidate : valid) {
             if (availableAmount(available, ingredientKey(candidate)) > 0) {
                 return Optional.of(candidate.copy());
@@ -1097,7 +1209,7 @@ public final class RecipeTreeData {
             return Optional.empty();
         }
 
-        Map<String, List<RecipeSnapshot>> recipeCache = new HashMap<>();
+        Map<String, List<RecipeSnapshot>> recipeCache = resolvedContext.recipeCache;
         CandidateSearchBudget searchBudget = budget == null ? new CandidateSearchBudget() : budget;
         for (ItemStack candidate : valid) {
             Map<String, Long> trial = new LinkedHashMap<>(available);

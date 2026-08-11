@@ -26,6 +26,8 @@ public abstract class IngredientFilterMixin implements IngredientListFeatureSour
     @Unique
     private volatile int jeiPlusPlus$selectedCreativeTab;
     @Unique
+    private volatile int jeiPlusPlus$creativeTabPage;
+    @Unique
     private final Set<String> jeiPlusPlus$expandedGroups = ConcurrentHashMap.newKeySet();
     @Unique
     private volatile List<IElement<?>> jeiPlusPlus$sourceCache;
@@ -113,6 +115,16 @@ public abstract class IngredientFilterMixin implements IngredientListFeatureSour
             jeiPlusPlus$selectedCreativeTab = index;
             jeiPlusPlus$refresh();
         }
+    }
+
+    @Override
+    public int jeiPlusPlus$getCreativeTabPage() {
+        return Math.max(0, jeiPlusPlus$creativeTabPage);
+    }
+
+    @Override
+    public void jeiPlusPlus$setCreativeTabPage(int page) {
+        jeiPlusPlus$creativeTabPage = Math.max(0, page);
     }
 
     @Override

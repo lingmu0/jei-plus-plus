@@ -27,6 +27,7 @@ import java.util.Set;
  * client-side objects only; no JEI++ server packet is introduced.</p>
  */
 final class Ae2StorageIntegration {
+    private static final long CACHE_FALLBACK_NANOS = 50_000_000L;
     private static final String GRID_NODE = "appeng.api.networking.IGridNode";
     private static final String ITEM_KEY = "appeng.api.stacks.AEItemKey";
     private static final String CRAFTING_MENU = "appeng.menu.me.items.CraftingTermMenu";
@@ -55,6 +56,7 @@ final class Ae2StorageIntegration {
 
     private static volatile Object cachedMenu;
     private static volatile long cachedGameTime = Long.MIN_VALUE;
+    private static volatile long cachedAtNanos = Long.MIN_VALUE;
     private static volatile List<StoredStack> cachedStacks = List.of();
     private static volatile Object prioritizedRepo;
     private static volatile boolean repoWasPrioritized;
@@ -66,15 +68,21 @@ final class Ae2StorageIntegration {
         Minecraft minecraft = Minecraft.getInstance();
         Object menu = activeMenu();
         long gameTime = minecraft.level == null ? -1L : minecraft.level.getGameTime();
+        long now = System.nanoTime();
         if (menu == null) {
             cachedMenu = null;
             cachedGameTime = gameTime;
+            cachedAtNanos = now;
             cachedStacks = List.of();
             return List.of();
         }
 
         List<StoredStack> previous = cachedStacks;
-        if (menu == cachedMenu && gameTime == cachedGameTime) {
+        long cacheAge = now - cachedAtNanos;
+        if (menu == cachedMenu
+            && gameTime == cachedGameTime
+            && cacheAge >= 0L
+            && cacheAge < CACHE_FALLBACK_NANOS) {
             return previous;
         }
 
@@ -82,6 +90,7 @@ final class Ae2StorageIntegration {
         synchronized (Ae2StorageIntegration.class) {
             cachedMenu = menu;
             cachedGameTime = gameTime;
+            cachedAtNanos = now;
             cachedStacks = List.copyOf(result);
             return cachedStacks;
         }
