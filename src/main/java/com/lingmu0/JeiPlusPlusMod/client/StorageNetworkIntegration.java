@@ -834,7 +834,27 @@ final class StorageNetworkIntegration {
         try {
             if (classOrSuper(screen.getClass(), RS1_SCREEN)) {
                 renderRs1Highlights(graphics, screen);
-            } else if (classOrSuper(screen.getClass(), IT_SCREEN)) {
+            }
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            // Rendering integrations must never make an optional terminal fatal.
+        }
+    }
+
+    /**
+     * Integrated Terminals draws its virtual slots and tooltips from renderLabels.
+     * This hook is called after its background slot contents, but before its
+     * foreground slot tooltips, so the overlay cannot cover tooltip text even
+     * though CyclopsCore renders tooltips with depth testing disabled.
+     */
+    static void renderIntegratedTerminalHighlightsBeforeTooltip(
+        GuiGraphics graphics,
+        AbstractContainerScreen<?> screen
+    ) {
+        if (graphics == null || screen == null || !RecipeTreeFavorites.isActive()) {
+            return;
+        }
+        try {
+            if (classOrSuper(screen.getClass(), IT_SCREEN)) {
                 renderIntegratedHighlights(graphics, screen);
             }
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
@@ -887,11 +907,16 @@ final class StorageNetworkIntegration {
             // the loader remap the direct calls instead.
             if (value instanceof Rect2i rect) {
                 // Integrated Terminals exposes the 16x16 item-content rect,
-                // while our border starts one pixel outside that content.
-                // Its tooltip is also rendered below the generic z=300
-                // virtual-slot overlay, so keep this integration below the
-                // tooltip while remaining above the item texture.
-                drawHighlight(graphics, rect.getX() - 1, rect.getY() - 1, stack, 200);
+                // while our border starts one pixel outside that content. This
+                // renderer runs inside renderLabels, whose pose is already
+                // translated by the container's GUI origin.
+                drawHighlight(
+                    graphics,
+                    rect.getX() - screen.getGuiLeft() - 1,
+                    rect.getY() - screen.getGuiTop() - 1,
+                    stack,
+                    200
+                );
             }
         }
     }
