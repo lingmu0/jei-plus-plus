@@ -230,9 +230,13 @@ public final class RecipeTreeFavorites {
             boolean recursive = JeiPlusPlusConfig.AUTOMATIC_CRAFTING_ENABLED.get()
                 && net.minecraft.client.gui.screens.Screen.hasShiftDown();
             if (input.isSimulate()) {
-                return RecipeTreeTransfer.canTransfer(step, recursive);
+                // Claim the click during JEI's simulation pass even when no
+                // transfer is possible. Otherwise JEI falls back to opening
+                // the recipe page, which is not the bookmark action here.
+                return true;
             }
-            return RecipeTreeTransfer.transfer(step, recursive);
+            RecipeTreeTransfer.transfer(step, recursive);
+            return true;
         }
 
         @Override
