@@ -92,6 +92,14 @@ public final class RecipeTreeFavorites {
         StorageNetworkIntegration.renderVirtualStorageHighlights(graphics, screen);
     }
 
+    /** Draws Integrated Terminals overlays before that screen renders its tooltip. */
+    public static void renderIntegratedTerminalHighlightsBeforeTooltip(
+        GuiGraphics graphics,
+        AbstractContainerScreen<?> screen
+    ) {
+        StorageNetworkIntegration.renderIntegratedTerminalHighlightsBeforeTooltip(graphics, screen);
+    }
+
     public static void refreshThrottled() {
         long now = System.nanoTime();
         Object menu = Ae2StorageIntegration.activeMenu();
