@@ -52,6 +52,7 @@ public final class RecipeTreeTransfer {
     private static int pendingAe2PlacementCount;
     private static long pendingAe2PlacementInventoryBefore;
     private static String pendingAe2OutputKey = "";
+    private static ItemStack pendingAe2OutputStack = ItemStack.EMPTY;
     private static long pendingAe2InventoryBefore;
     private static boolean pendingVanillaPickup;
     private static int pendingPickupAttempts;
@@ -148,8 +149,11 @@ public final class RecipeTreeTransfer {
         }
 
         PendingCraft craft = pendingCrafts.get(pendingCraftIndex);
-        Boolean gridReady = networkGridReady(screen.getMenu(), craft.step);
-        if (Boolean.FALSE.equals(gridReady)) {
+        ItemStack outputBefore = result.getItem().copy();
+        if (!isExpectedCraftOutput(craft.step, outputBefore)) {
+            // The network transfer is asynchronous. Validate the result rather
+            // than requiring its 3x3 matrix to contain JEI++'s exact candidate:
+            // the terminal may legally choose another item from the same tag.
             if (++emptyFrames > AE2_WAIT_FRAMES) {
                 clearPending();
             }
@@ -157,7 +161,7 @@ public final class RecipeTreeTransfer {
         }
 
         emptyFrames = 0;
-        ItemStack outputBefore = result.getItem().copy();
+        long ownedBefore = RecipeTreeData.inventoryAmount(outputBefore);
         Boolean ae2Pickup = StorageNetworkIntegration.takeCraftingResult(
             screen.getMenu(),
             pendingResultSlot,
@@ -170,11 +174,12 @@ public final class RecipeTreeTransfer {
             pendingAe2Carry = true;
             pendingAe2PlacementSlot = -1;
             pendingAe2OutputKey = RecipeTreeData.ingredientKey(outputBefore);
-            pendingAe2InventoryBefore = playerInventoryAmount(
-                screen.getMenu(),
-                minecraft.player,
-                pendingAe2OutputKey
-            );
+            pendingAe2OutputStack = outputBefore.copy();
+            pendingAe2OutputStack.setCount(1);
+            // Capture this before the click. Generic container clicks are
+            // predicted locally, so measuring afterwards can already include
+            // the crafted item and make completion impossible to observe.
+            pendingAe2InventoryBefore = ownedBefore;
             pendingResultSlot = -1;
             emptyFrames = 0;
             waitFrames = 2;
@@ -270,14 +275,11 @@ public final class RecipeTreeTransfer {
         }
 
         if (carried.isEmpty()) {
-            // AE2 normally synchronizes CRAFT_ITEM through the menu carried
-            // stack. Some AE2/Forge combinations instead insert the result
-            // directly into the player inventory. Treat that path as a
-            // completed operation too, otherwise the recursive queue waits
-            // for the timeout after the first craft.
-            if (!pendingAe2OutputKey.isEmpty()
-                && playerInventoryAmount(menu, minecraft.player, pendingAe2OutputKey)
-                    > pendingAe2InventoryBefore) {
+            // Some terminal slots insert the result directly into the player
+            // inventory or their network instead of synchronizing a carried
+            // stack. Either destination completes this one crafting step.
+            if (!pendingAe2OutputStack.isEmpty()
+                && RecipeTreeData.inventoryAmount(pendingAe2OutputStack) > pendingAe2InventoryBefore) {
                 completePendingCraft();
                 return;
             }
@@ -376,6 +378,7 @@ public final class RecipeTreeTransfer {
         pendingAe2PlacementCount = 0;
         pendingAe2PlacementInventoryBefore = 0;
         pendingAe2OutputKey = "";
+        pendingAe2OutputStack = ItemStack.EMPTY;
         pendingAe2InventoryBefore = 0;
         pendingVanillaPickup = false;
         pendingPickupAttempts = 0;
@@ -447,6 +450,21 @@ public final class RecipeTreeTransfer {
             return null;
         }
         return tree.recursiveCraftingSteps(step).stream().findFirst().orElse(null);
+    }
+
+    private static boolean isExpectedCraftOutput(RecipeTreeData.CraftStep step, ItemStack actual) {
+        if (step == null || actual == null || actual.isEmpty()) {
+            return false;
+        }
+        String actualKey = RecipeTreeData.ingredientKey(actual);
+        if (actualKey.equals(RecipeTreeData.ingredientKey(step.stack()))) {
+            return true;
+        }
+        // A bookmarked by-product can point at a recipe whose physical result
+        // slot contains the primary output. Both are valid outputs of the same
+        // recipe and must allow that crafting operation to complete.
+        return RecipeTreeData.snapshot(step.recipe()).outputs().stream()
+            .anyMatch(output -> actualKey.equals(RecipeTreeData.ingredientKey(output)));
     }
 
     private static boolean startNextCraft() {
@@ -764,22 +782,6 @@ public final class RecipeTreeTransfer {
         return StorageNetworkIntegration.tryFillCraftingGrid(menu, templates, doTransfer);
     }
 
-    private static Boolean networkGridReady(
-        AbstractContainerMenu menu,
-        RecipeTreeData.CraftStep step
-    ) {
-        if (step == null || !(step.recipe().recipe() instanceof CraftingRecipe)
-            || !StorageNetworkIntegration.isCraftingMenu(menu)) {
-            return null;
-        }
-        IRecipeLayoutDrawable<?> layout = RecipeTreeData.createLayout(step.recipe()).orElse(null);
-        if (layout == null) {
-            return false;
-        }
-        List<ItemStack> templates = ae2Templates(layout, step.selectedInputs(), true);
-        return templates == null ? false : StorageNetworkIntegration.craftingGridMatches(menu, templates);
-    }
-
     private static List<ItemStack> ae2Templates(
         IRecipeLayoutDrawable<?> layout,
         List<String> selectedInputs,
@@ -829,6 +831,7 @@ public final class RecipeTreeTransfer {
         pendingAe2PlacementCount = 0;
         pendingAe2PlacementInventoryBefore = 0;
         pendingAe2OutputKey = "";
+        pendingAe2OutputStack = ItemStack.EMPTY;
         pendingAe2InventoryBefore = 0;
         pendingVanillaPickup = false;
         pendingPickupAttempts = 0;

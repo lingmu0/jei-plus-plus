@@ -1,7 +1,11 @@
 package com.lingmu0.JeiPlusPlusMod.client;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.Rect2i;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
@@ -10,7 +14,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -24,31 +30,99 @@ import java.util.Set;
  * JEI++ remains a client-only, optional integration.</p>
  */
 final class StorageNetworkIntegration {
+    private static final long CACHE_FALLBACK_NANOS = 50_000_000L;
     private static final String RS1_MENU = "com.refinedmods.refinedstorage.container.GridContainerMenu";
     private static final String RS2_MENU = "com.refinedmods.refinedstorage.common.grid.AbstractCraftingGridContainerMenu";
+    private static final String RS1_SCREEN = "com.refinedmods.refinedstorage.screen.grid.GridScreen";
     private static final String BD_MENU = "com.wintercogs.beyonddimensions.common.menu.DimensionsCraftMenu";
+    private static final String IT_MENU =
+        "org.cyclops.integratedterminals.inventory.container.ContainerTerminalStorageBase";
+    private static final String IT_SCREEN =
+        "org.cyclops.integratedterminals.client.gui.container.ContainerScreenTerminalStorage";
+
+    private static volatile Object cachedMenu;
+    private static volatile long cachedGameTime = Long.MIN_VALUE;
+    private static volatile long cachedAtNanos = Long.MIN_VALUE;
+    private static volatile long cachedSnapshotRevision;
+    private static volatile List<StoredStack> cachedStacks = List.of();
 
     private StorageNetworkIntegration() {
     }
 
     static List<StoredStack> storedStacks() {
         Object menu = Ae2StorageIntegration.activeMenu();
+        long now = System.nanoTime();
         if (menu == null) {
+            if (cachedMenu != null || !cachedStacks.isEmpty()) {
+                cachedSnapshotRevision++;
+            }
+            cachedMenu = null;
+            cachedGameTime = Long.MIN_VALUE;
+            cachedAtNanos = now;
+            cachedStacks = List.of();
             return List.of();
         }
+        Minecraft minecraft = Minecraft.getInstance();
+        long gameTime = minecraft.level == null ? -1L : minecraft.level.getGameTime();
+        long cacheAge = now - cachedAtNanos;
+        if (menu == cachedMenu
+            && gameTime == cachedGameTime
+            && cacheAge >= 0L
+            && cacheAge < CACHE_FALLBACK_NANOS) {
+            return cachedStacks;
+        }
+
         List<StoredStack> ae2 = new ArrayList<>();
         for (Ae2StorageIntegration.StoredStack stored : Ae2StorageIntegration.storedStacks()) {
             ae2.add(new StoredStack(stored.stack(), stored.amount()));
         }
+        List<StoredStack> result;
         if (!ae2.isEmpty() || Ae2StorageIntegration.isCraftingMenu(menu)) {
-            return ae2;
+            result = ae2;
+        } else {
+            List<StoredStack> refined = refinedStorageStacks(menu);
+            if (!refined.isEmpty() || isRefinedStorageMenu(menu)) {
+                result = refined;
+            } else {
+                List<StoredStack> beyond = beyondStacks(menu);
+                result = !beyond.isEmpty() || isBeyondMenu(menu)
+                    ? beyond
+                    : integratedTerminalStacks(menu);
+            }
         }
-        List<StoredStack> refined = refinedStorageStacks(menu);
-        if (!refined.isEmpty() || isRefinedStorageMenu(menu)) {
-            return refined;
+        boolean snapshotChanged = menu != cachedMenu || !sameSnapshot(cachedStacks, result);
+        cachedMenu = menu;
+        cachedGameTime = gameTime;
+        cachedAtNanos = now;
+        cachedStacks = List.copyOf(result);
+        if (snapshotChanged) {
+            cachedSnapshotRevision++;
         }
-        List<StoredStack> beyond = beyondStacks(menu);
-        return beyond;
+        return cachedStacks;
+    }
+
+    /**
+     * Version of the combined client-side storage snapshot. It advances when
+     * the cache is queried again, including the real-time fallback used while
+     * an AE screen is waiting for its initial repository sync packet.
+     */
+    static long snapshotRevision() {
+        storedStacks();
+        return cachedSnapshotRevision;
+    }
+
+    private static boolean sameSnapshot(List<StoredStack> previous, List<StoredStack> next) {
+        if (previous.size() != next.size()) {
+            return false;
+        }
+        for (int index = 0; index < previous.size(); index++) {
+            StoredStack left = previous.get(index);
+            StoredStack right = next.get(index);
+            if (left.amount != right.amount || !left.key.equals(right.key)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Moves network-backed entries ahead of ordinary entries where the mod exposes a mutable view. */
@@ -59,18 +133,10 @@ final class StorageNetworkIntegration {
             return;
         }
         try {
-            Object repository = invokeNoArg(menu, "getRepository");
-            if (repository != null) {
-                Object view = invokeNoArg(repository, "getViewList");
-                if (view instanceof List<?> list) {
-                    @SuppressWarnings("unchecked")
-                    List<Object> mutable = (List<Object>) list;
-                    mutable.sort((left, right) -> Boolean.compare(
-                        isHighlightedResource(right, repository, keys),
-                        isHighlightedResource(left, repository, keys)
-                    ));
-                }
-            }
+            prioritizeRs2(menu, keys);
+            prioritizeRs1(keys);
+            prioritizeBeyond(menu, keys);
+            prioritizeIntegrated(menu, keys);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             // Optional internal APIs are allowed to change without affecting JEI++.
         }
@@ -131,6 +197,10 @@ final class StorageNetworkIntegration {
                 for (int i = 0; i < 9; i++) {
                     actual.add(stackOf(invokeNoArg(invoke(menu, "getSlot", int.class, start + i), "getItem")));
                 }
+            } else if (isIntegratedTerminalMenu(menu)) {
+                Object commonTab = integratedSelectedCommonTab(menu);
+                Object matrix = invokeNoArg(commonTab, "getInventoryCrafting");
+                readContainer(matrix, actual, 9);
             } else {
                 return null;
             }
@@ -168,12 +238,54 @@ final class StorageNetworkIntegration {
                 return i;
             }
         }
+        if (isIntegratedTerminalMenu(menu)) {
+            try {
+                Object commonTab = integratedSelectedCommonTab(menu);
+                Object result = invokeNoArg(commonTab, "getSlotCrafting");
+                for (int i = 0; i < menu.slots.size(); i++) {
+                    if (menu.getSlot(i) == result) {
+                        return i;
+                    }
+                }
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+                // Optional Integrated Terminals internals.
+            }
+        }
         return -1;
     }
 
-    /** Result slots of RS/BD extend vanilla ResultSlot, so generic clicks remain preferred. */
+    /**
+     * Network menus must take one result with a normal pickup. RS and Beyond
+     * Dimensions override or special-case quick-move, so using QUICK_MOVE can
+     * leave the result in place forever and stall the recursive queue.
+     */
     static Boolean takeCraftingResult(Object menu, int resultSlot, boolean send) {
-        return Ae2StorageIntegration.takeCraftingResult(menu, resultSlot, send);
+        Boolean ae2 = Ae2StorageIntegration.takeCraftingResult(menu, resultSlot, send);
+        if (ae2 != null) {
+            return ae2;
+        }
+        if (!isRefinedStorageMenu(menu) && !isBeyondMenu(menu) && !isIntegratedTerminalMenu(menu)) {
+            return null;
+        }
+        if (!send) {
+            return true;
+        }
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!(menu instanceof AbstractContainerMenu container)
+            || minecraft.player == null
+            || minecraft.gameMode == null
+            || resultSlot < 0
+            || resultSlot >= container.slots.size()) {
+            return false;
+        }
+        minecraft.gameMode.handleInventoryMouseClick(
+            container.containerId,
+            resultSlot,
+            0,
+            ClickType.PICKUP,
+            minecraft.player
+        );
+        return true;
     }
 
     /** Uses each network terminal's own cursor-insertion hook when available. */
@@ -218,6 +330,9 @@ final class StorageNetworkIntegration {
             }
             if (isBeyondMenu(menu)) {
                 return sendBeyondCursorInsert(menu);
+            }
+            if (isIntegratedTerminalMenu(menu)) {
+                return sendIntegratedCursorInsert(menu);
             }
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             // Optional network insertion APIs.
@@ -278,16 +393,56 @@ final class StorageNetworkIntegration {
         return false;
     }
 
+    /** Lets Integrated Terminals build and send its own PLAYER_PLACE_STORAGE packet. */
+    private static Boolean sendIntegratedCursorInsert(Object menu) {
+        try {
+            Object tab = integratedItemClientTab(menu);
+            if (tab == null || !(menu instanceof AbstractContainerMenu container)) {
+                return false;
+            }
+            int channel = intValue(invokeNoArg(menu, "getSelectedChannel"));
+            Method click = findCompatibleMethod(
+                tab.getClass(),
+                "handleClick",
+                AbstractContainerMenu.class,
+                int.class,
+                int.class,
+                int.class,
+                boolean.class,
+                boolean.class,
+                int.class,
+                boolean.class
+            );
+            if (click == null) {
+                return false;
+            }
+            Object handled = click.invoke(tab, container, channel, 0, 0, false, true, -1, false);
+            return Boolean.TRUE.equals(handled);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return false;
+        }
+    }
+
     static boolean isCraftingMenu(Object menu) {
         return Ae2StorageIntegration.isCraftingMenu(menu)
             || isRs1Menu(menu)
             || isRs2Menu(menu)
-            || isBeyondMenu(menu);
+            || isBeyondMenu(menu)
+            || isIntegratedTerminalMenu(menu);
     }
 
     private static List<StoredStack> refinedStorageStacks(Object menu) {
         try {
             if (isRs1Menu(menu)) {
+                // The client grid view is the authoritative RS 1.x snapshot:
+                // its IGridStack quantity is what the terminal actually shows.
+                // Storage-cache entries vary between RS releases and may only
+                // carry a normalized display stack, which made bookmark counts
+                // appear as 1 even while highlighting and sorting worked.
+                List<StoredStack> viewStacks = refinedStorageViewStacks();
+                if (viewStacks != null) {
+                    return viewStacks;
+                }
                 Object grid = invokeNoArg(menu, "getGrid");
                 Object cache = invokeNoArg(grid, "getStorageCache");
                 Object list = invokeNoArg(cache, "getList");
@@ -295,7 +450,10 @@ final class StorageNetworkIntegration {
                 if (entries instanceof Iterable<?> iterable) {
                     List<StoredStack> result = new ArrayList<>();
                     for (Object entry : iterable) {
-                        ItemStack stack = stackOf(invokeNoArg(entry, "getStack"));
+                        ItemStack stack = stackOf(entry);
+                        if (stack.isEmpty()) {
+                            stack = stackOf(invokeNoArg(entry, "getStack"));
+                        }
                         if (!stack.isEmpty() && stack.getCount() > 0) {
                             result.add(new StoredStack(stack, stack.getCount()));
                         }
@@ -330,6 +488,64 @@ final class StorageNetworkIntegration {
             // Optional RS APIs.
         }
         return List.of();
+    }
+
+    /** Returns null when no compatible RS screen is available, and an empty list for an empty grid. */
+    private static List<StoredStack> refinedStorageViewStacks() {
+        AbstractContainerScreen<?> screen = activeContainerScreen();
+        if (screen == null || !classOrSuper(screen.getClass(), RS1_SCREEN)) {
+            return null;
+        }
+        try {
+            Object view = invokeNoArg(screen, "getView");
+            Object entries = invokeNoArg(view, "getAllStacks");
+            if (!(entries instanceof Iterable<?> iterable)) {
+                return null;
+            }
+            List<StoredStack> result = new ArrayList<>();
+            for (Object entry : iterable) {
+                ItemStack stack = rs1EntryStack(entry);
+                long amount = numberValue(invokeNoArg(entry, "getQuantity"));
+                if (!stack.isEmpty() && amount > 0) {
+                    result.add(new StoredStack(stack, amount));
+                }
+            }
+            return result;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return null;
+        }
+    }
+
+    private static List<StoredStack> integratedTerminalStacks(Object menu) {
+        if (!isIntegratedTerminalMenu(menu)) {
+            return List.of();
+        }
+        try {
+            Object tab = integratedItemClientTab(menu);
+            if (tab == null) {
+                return List.of();
+            }
+            int channel = intValue(invokeNoArg(menu, "getSelectedChannel"));
+            Object entries = invoke(tab, "createUnfilteredIngredientsView", int.class, channel);
+            if (!(entries instanceof Iterable<?> iterable)) {
+                return List.of();
+            }
+            List<StoredStack> result = new ArrayList<>();
+            for (Object entry : iterable) {
+                // Crafting-option rows are recipes, not items physically stored
+                // in the Integrated Dynamics network.
+                if (invokeNoArg(entry, "getCraftingOption") != null) {
+                    continue;
+                }
+                ItemStack stack = stackOf(invokeNoArg(entry, "getInstance"));
+                if (!stack.isEmpty() && stack.getCount() > 0) {
+                    result.add(new StoredStack(stack, stack.getCount()));
+                }
+            }
+            return result;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return List.of();
+        }
     }
 
     private static List<StoredStack> beyondStacks(Object menu) {
@@ -372,14 +588,26 @@ final class StorageNetworkIntegration {
             Class<?> messageType = Class.forName(
                 "com.refinedmods.refinedstorage.network.grid.GridTransferMessage"
             );
-            ItemStack[][] recipe = new ItemStack[9][];
+            List<List<ItemStack>> inputs = new ArrayList<>(9);
             for (int i = 0; i < 9; i++) {
                 ItemStack stack = templates.get(i);
-                recipe[i] = stack == null || stack.isEmpty()
-                    ? new ItemStack[0]
-                    : new ItemStack[] {stack.copy()};
+                inputs.add(stack == null || stack.isEmpty() ? List.of() : List.of(stack.copy()));
             }
-            Object message = constructor(messageType, ItemStack[][].class).newInstance((Object) recipe);
+            Object message;
+            Constructor<?> listConstructor = findConstructor(messageType, List.class);
+            if (listConstructor != null) {
+                message = listConstructor.newInstance(inputs);
+            } else {
+                ItemStack[][] recipe = new ItemStack[9][];
+                for (int i = 0; i < inputs.size(); i++) {
+                    recipe[i] = inputs.get(i).toArray(ItemStack[]::new);
+                }
+                Constructor<?> arrayConstructor = findConstructor(messageType, ItemStack[][].class);
+                if (arrayConstructor == null) {
+                    return false;
+                }
+                message = arrayConstructor.newInstance((Object) recipe);
+            }
             Class<?> rsType = Class.forName("com.refinedmods.refinedstorage.RS");
             Object handler = readStaticField(rsType, "NETWORK_HANDLER");
             Method sender = findCompatibleMethod(handler.getClass(), "sendToServer", messageType);
@@ -496,6 +724,285 @@ final class StorageNetworkIntegration {
         return menu != null && classOrSuper(menu.getClass(), BD_MENU);
     }
 
+    private static boolean isIntegratedTerminalMenu(Object menu) {
+        return menu != null && classOrSuper(menu.getClass(), IT_MENU);
+    }
+
+    private static void prioritizeRs2(Object menu, Set<String> keys) throws ReflectiveOperationException {
+        Object repository = invokeNoArg(menu, "getRepository");
+        if (repository == null) {
+            return;
+        }
+        Object view = invokeNoArg(repository, "getViewList");
+        if (view instanceof List<?> list) {
+            @SuppressWarnings("unchecked")
+            List<Object> mutable = (List<Object>) list;
+            mutable.sort(Comparator.comparing(
+                entry -> !isHighlightedResource(entry, repository, keys)
+            ));
+        }
+    }
+
+    private static void prioritizeRs1(Set<String> keys) throws ReflectiveOperationException {
+        Object screen = Minecraft.getInstance().screen;
+        if (screen == null || !classOrSuper(screen.getClass(), RS1_SCREEN)) {
+            return;
+        }
+        Object view = invokeNoArg(screen, "getView");
+        Object entries = invokeNoArg(view, "getStacks");
+        if (entries instanceof List<?> list) {
+            @SuppressWarnings("unchecked")
+            List<Object> mutable = (List<Object>) list;
+            mutable.sort(Comparator.comparing(entry -> !isHighlightedGridStack(entry, keys)));
+        }
+    }
+
+    private static void prioritizeBeyond(Object menu, Set<String> keys) throws ReflectiveOperationException {
+        if (!isBeyondMenu(menu)) {
+            return;
+        }
+        Object clientStorage = readField(menu, "clientNetStorage");
+        if (clientStorage == null) {
+            return;
+        }
+        Class<?> settings = Class.forName("com.wintercogs.beyonddimensions.config.CommonConfigRuntime");
+        Object primary = readStaticField(settings, "uiSortButton");
+        Object secondary = readStaticField(settings, "uiSecondSortButton");
+        Object reverseState = readStaticField(settings, "uiReverseButton");
+        boolean reverse = reverseState != null && "ENABLED".equals(reverseState.toString());
+        Method builder = findCompatibleMethod(
+            clientStorage.getClass(),
+            "buildSortedIndex",
+            primary == null ? null : primary.getClass(),
+            secondary == null ? null : secondary.getClass(),
+            boolean.class
+        );
+        if (builder == null) {
+            return;
+        }
+        Object built = builder.invoke(clientStorage, primary, secondary, reverse);
+        if (!(built instanceof List<?> raw)) {
+            return;
+        }
+        List<Integer> indexes = new ArrayList<>();
+        for (Object value : raw) {
+            if (value instanceof Number number) {
+                indexes.add(number.intValue());
+            }
+        }
+        indexes.sort(Comparator.comparing(index -> !isHighlightedBeyondIndex(clientStorage, index, keys)));
+        int first = Math.max(0, intValue(readField(menu, "lineData")) * 9);
+        int visible = Math.max(0, intValue(invokeNoArg(menu, "getLines")) * 9);
+        ArrayList<Integer> page = new ArrayList<>(visible);
+        for (int i = 0; i < visible; i++) {
+            int index = first + i;
+            page.add(index < indexes.size() ? indexes.get(index) : -1);
+        }
+        Method loader = findCompatibleMethod(menu.getClass(), "loadIndexList", ArrayList.class);
+        if (loader != null) {
+            loader.invoke(menu, page);
+        }
+    }
+
+    private static void prioritizeIntegrated(Object menu, Set<String> keys) throws ReflectiveOperationException {
+        if (!isIntegratedTerminalMenu(menu)) {
+            return;
+        }
+        Object tab = integratedItemClientTab(menu);
+        if (tab == null) {
+            return;
+        }
+        int channel = intValue(invokeNoArg(menu, "getSelectedChannel"));
+        int count = Math.max(1, intValue(invoke(tab, "getSlotCount", int.class, channel)));
+        invokeThreeInts(tab, "getSlots", channel, 0, count);
+        Object views = readField(tab, "filteredIngredientsViews");
+        Object entries = invoke(views, "get", int.class, channel);
+        if (entries instanceof List<?> list) {
+            @SuppressWarnings("unchecked")
+            List<Object> mutable = (List<Object>) list;
+            mutable.sort(Comparator.comparing(entry -> !isHighlightedIntegratedEntry(entry, keys)));
+        }
+    }
+
+    static void renderVirtualStorageHighlights(
+        GuiGraphics graphics,
+        AbstractContainerScreen<?> screen
+    ) {
+        if (graphics == null || screen == null || !RecipeTreeFavorites.isActive()) {
+            return;
+        }
+        try {
+            if (classOrSuper(screen.getClass(), RS1_SCREEN)) {
+                renderRs1Highlights(graphics, screen);
+            } else if (classOrSuper(screen.getClass(), IT_SCREEN)) {
+                renderIntegratedHighlights(graphics, screen);
+            }
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            // Rendering integrations must never make an optional terminal fatal.
+        }
+    }
+
+    private static void renderRs1Highlights(GuiGraphics graphics, AbstractContainerScreen<?> screen)
+        throws ReflectiveOperationException {
+        Object view = invokeNoArg(screen, "getView");
+        Object entries = invokeNoArg(view, "getStacks");
+        if (!(entries instanceof List<?> list)) {
+            return;
+        }
+        int rowOffset = Math.max(0, intValue(invokeNoArg(screen, "getCurrentOffset")));
+        int rows = Math.max(0, intValue(invokeNoArg(screen, "getVisibleRows")));
+        int start = rowOffset * 9;
+        for (int local = 0; local < rows * 9 && start + local < list.size(); local++) {
+            ItemStack stack = rs1EntryStack(list.get(start + local));
+            drawHighlight(
+                graphics,
+                screen.getGuiLeft() + 8 + local % 9 * 18,
+                screen.getGuiTop() + 19 + local / 9 * 18,
+                stack
+            );
+        }
+    }
+
+    private static void renderIntegratedHighlights(GuiGraphics graphics, AbstractContainerScreen<?> screen)
+        throws ReflectiveOperationException {
+        Object menu = screen.getMenu();
+        Object tab = integratedItemClientTab(menu);
+        if (tab == null) {
+            return;
+        }
+        int channel = intValue(invokeNoArg(menu, "getSelectedChannel"));
+        int firstRow = Math.max(0, intValue(invokeNoArg(screen, "getSelectedFirstRow")));
+        int rowLength = Math.max(1, intValue(invokeNoArg(screen, "getSlotRowLength")));
+        int visibleRows = Math.max(0, intValue(invokeNoArg(screen, "getSlotVisibleRows")));
+        int start = firstRow * rowLength;
+        Object visible = invokeThreeInts(tab, "getSlots", channel, start, visibleRows * rowLength);
+        if (!(visible instanceof List<?> list)) {
+            return;
+        }
+        for (int local = 0; local < list.size(); local++) {
+            ItemStack stack = stackOf(invokeNoArg(list.get(local), "getInstance"));
+            Object value = invoke(screen, "getStorageSlotRect", int.class, start + local);
+            // Rect2i belongs to Minecraft, so reflective Mojmap method names
+            // are not stable in a production Forge runtime. Cast it and let
+            // the loader remap the direct calls instead.
+            if (value instanceof Rect2i rect) {
+                // Integrated Terminals exposes the 16x16 item-content rect,
+                // while our border starts one pixel outside that content.
+                // Its tooltip is also rendered below the generic z=300
+                // virtual-slot overlay, so keep this integration below the
+                // tooltip while remaining above the item texture.
+                drawHighlight(graphics, rect.getX() - 1, rect.getY() - 1, stack, 200);
+            }
+        }
+    }
+
+    private static AbstractContainerScreen<?> activeContainerScreen() {
+        Object current = Minecraft.getInstance().screen;
+        for (int depth = 0; depth < 4 && current instanceof RecipeTreeScreen tree; depth++) {
+            current = tree.parentScreen();
+        }
+        return current instanceof AbstractContainerScreen<?> screen ? screen : null;
+    }
+
+    private static void drawHighlight(GuiGraphics graphics, int x, int y, ItemStack stack) {
+        drawHighlight(graphics, x, y, stack, 300);
+    }
+
+    private static void drawHighlight(GuiGraphics graphics, int x, int y, ItemStack stack, int z) {
+        boolean intermediate = RecipeTreeFavorites.isIntermediate(stack);
+        boolean required = RecipeTreeFavorites.isRequired(stack);
+        if (!intermediate && !required) {
+            return;
+        }
+        int fill = intermediate ? 0x44FF2222 : 0x3300BBFF;
+        int border = intermediate ? 0xDDFF5555 : 0xCC55DDFF;
+        graphics.pose().pushPose();
+        graphics.pose().translate(0, 0, z);
+        graphics.fill(x, y, x + 16, y + 16, fill);
+        graphics.fill(x, y, x + 16, y + 1, border);
+        graphics.fill(x, y + 15, x + 16, y + 16, border);
+        graphics.fill(x, y, x + 1, y + 16, border);
+        graphics.fill(x + 15, y, x + 16, y + 16, border);
+        graphics.pose().popPose();
+    }
+
+    private static boolean isHighlightedGridStack(Object entry, Set<String> keys) {
+        try {
+            ItemStack stack = rs1EntryStack(entry);
+            return !stack.isEmpty() && keys.contains(RecipeTreeData.ingredientKey(stack));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return false;
+        }
+    }
+
+    /** RS 1.x has used both raw ItemStacks and wrapper entries across releases. */
+    private static ItemStack rs1EntryStack(Object entry) throws ReflectiveOperationException {
+        ItemStack stack = stackOf(entry);
+        if (stack.isEmpty()) {
+            stack = stackOf(invokeNoArg(entry, "getIngredient"));
+        }
+        if (stack.isEmpty()) {
+            stack = stackOf(invokeNoArg(entry, "getStack"));
+        }
+        return stack;
+    }
+
+    private static boolean isHighlightedBeyondIndex(Object storage, int index, Set<String> keys) {
+        try {
+            Object entry = invoke(storage, "getStackBySlot", int.class, index);
+            ItemStack stack = stackOf(invokeNoArg(entry, "toStack"));
+            return !stack.isEmpty() && keys.contains(RecipeTreeData.ingredientKey(stack));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return false;
+        }
+    }
+
+    private static boolean isHighlightedIntegratedEntry(Object entry, Set<String> keys) {
+        try {
+            ItemStack stack = stackOf(invokeNoArg(entry, "getInstance"));
+            return !stack.isEmpty() && keys.contains(RecipeTreeData.ingredientKey(stack));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return false;
+        }
+    }
+
+    private static Object integratedSelectedCommonTab(Object menu) throws ReflectiveOperationException {
+        Object selected = invokeNoArg(menu, "getSelectedTab");
+        return selected instanceof String id
+            ? invoke(menu, "getTabCommon", String.class, id)
+            : null;
+    }
+
+    private static Object integratedItemClientTab(Object menu) throws ReflectiveOperationException {
+        if (!isIntegratedTerminalMenu(menu)) {
+            return null;
+        }
+        Object selected = invokeNoArg(menu, "getSelectedTab");
+        if (selected instanceof String id) {
+            Object tab = invoke(menu, "getTabClient", String.class, id);
+            if (isIntegratedItemTab(tab)) {
+                return tab;
+            }
+        }
+        Object tabs = invokeNoArg(menu, "getTabsClient");
+        if (tabs instanceof Map<?, ?> map) {
+            for (Object tab : map.values()) {
+                if (isIntegratedItemTab(tab)) {
+                    return tab;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isIntegratedItemTab(Object tab) {
+        if (tab == null) {
+            return false;
+        }
+        String name = tab.getClass().getName();
+        return name.contains("TerminalStorageTabIngredientComponentItemStack");
+    }
+
     private static boolean classOrSuper(Class<?> type, String name) {
         for (Class<?> current = type; current != null; current = current.getSuperclass()) {
             if (name.equals(current.getName())) {
@@ -574,6 +1081,23 @@ final class StorageNetworkIntegration {
         return constructor;
     }
 
+    private static Constructor<?> findConstructor(Class<?> type, Class<?>... parameterTypes) {
+        try {
+            return constructor(type, parameterTypes);
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static Object invokeThreeInts(Object target, String name, int first, int second, int third)
+        throws ReflectiveOperationException {
+        if (target == null) {
+            return null;
+        }
+        Method method = findCompatibleMethod(target.getClass(), name, int.class, int.class, int.class);
+        return method == null ? null : method.invoke(target, first, second, third);
+    }
+
     private static Field findField(Class<?> type, String name) {
         for (Class<?> current = type; current != null; current = current.getSuperclass()) {
             try {
@@ -643,11 +1167,13 @@ final class StorageNetworkIntegration {
 
     static final class StoredStack {
         private final ItemStack stack;
+        private final String key;
         private final long amount;
 
         private StoredStack(ItemStack stack, long amount) {
             this.stack = stack.copy();
             this.stack.setCount(1);
+            this.key = RecipeTreeData.ingredientKey(this.stack);
             this.amount = amount;
         }
 

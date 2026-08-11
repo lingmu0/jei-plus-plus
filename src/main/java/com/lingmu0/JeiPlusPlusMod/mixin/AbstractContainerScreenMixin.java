@@ -95,5 +95,6 @@ public abstract class AbstractContainerScreenMixin {
             graphics.fill(x + 15, y, x + 16, y + 16, border);
             graphics.pose().popPose();
         }
+        RecipeTreeFavorites.renderVirtualNetworkHighlights(graphics, screen);
     }
 }

@@ -240,14 +240,17 @@ public final class RecipeTreeScreen extends Screen {
         minY = Math.min(minY, batchY);
         maxY = Math.max(maxY, batchY + 22);
 
-        float contentWidth = Math.max(1, maxX - minX);
-        float contentHeight = Math.max(1, maxY - minY);
-        float availableWidth = Math.max(1, width - 28);
-        float availableHeight = Math.max(1, height - 28);
+        float contentPadding = 20.0f;
+        float contentWidth = Math.max(1, maxX - minX + contentPadding * 2.0f);
+        float contentHeight = Math.max(1, maxY - minY + contentPadding * 2.0f);
+        float availableWidth = Math.max(1, width - 24);
+        float availableHeight = Math.max(1, height - 24);
         // Very wide/deep trees must still fit on the first frame.  Users can
         // zoom back in after opening, but clipping the initial view hides the
         // active root and makes the saved crafting tree hard to recover.
-        zoom = Math.max(0.10f, Math.min(2.5f,
+        // Keep compact trees at their natural size. Enlarging a small tree to
+        // fill the entire window makes every newly opened view feel displaced.
+        zoom = Math.max(0.10f, Math.min(1.0f,
             Math.min(availableWidth / contentWidth, availableHeight / contentHeight)));
         offsetX = -(minX + maxX) / 2.0f;
         offsetY = -(minY + maxY) / 2.0f;
@@ -261,8 +264,11 @@ public final class RecipeTreeScreen extends Screen {
             renderWelcome(graphics);
         } else {
             graphics.pose().pushPose();
-            graphics.pose().translate(width / 2.0f + offsetX, height / 2.0f + offsetY, 0);
+            // Offsets are expressed in tree coordinates. Applying them after
+            // scaling keeps fitting, dragging and hit testing in one system.
+            graphics.pose().translate(width / 2.0f, height / 2.0f, 0);
             graphics.pose().scale(zoom, zoom, 1.0f);
+            graphics.pose().translate(offsetX, offsetY, 0);
 
             for (RecipeTreeData.Node node : visibleNodes) {
                 if (node.expanded()) {
@@ -931,7 +937,16 @@ public final class RecipeTreeScreen extends Screen {
             return true;
         }
         if (scrollY != 0) {
-            zoom = Math.max(0.35f, Math.min(2.5f, zoom + (scrollY > 0 ? 0.1f : -0.1f)));
+            float oldZoom = zoom;
+            float newZoom = Math.max(0.10f, Math.min(2.5f, zoom + (scrollY > 0 ? 0.1f : -0.1f)));
+            if (newZoom != oldZoom) {
+                // Preserve the tree coordinate under the cursor while zooming.
+                float treeX = (float) ((mouseX - width / 2.0) / oldZoom - offsetX);
+                float treeY = (float) ((mouseY - height / 2.0) / oldZoom - offsetY);
+                zoom = newZoom;
+                offsetX = (float) ((mouseX - width / 2.0) / newZoom - treeX);
+                offsetY = (float) ((mouseY - height / 2.0) / newZoom - treeY);
+            }
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
@@ -977,8 +992,8 @@ public final class RecipeTreeScreen extends Screen {
 
     private int[] treeMouse(double mouseX, double mouseY) {
         return new int[] {
-            (int) ((mouseX - width / 2.0 - offsetX) / zoom),
-            (int) ((mouseY - height / 2.0 - offsetY) / zoom)
+            (int) ((mouseX - width / 2.0) / zoom - offsetX),
+            (int) ((mouseY - height / 2.0) / zoom - offsetY)
         };
     }
 

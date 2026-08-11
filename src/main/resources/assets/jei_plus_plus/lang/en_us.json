@@ -1,6 +1,8 @@
 {
   "jei_plus_plus.category.ingredient_directory": "Ingredient directory",
   "jei_plus_plus.creative_tab.all": "All items",
+  "jei_plus_plus.creative_tab.previous_page": "Previous page",
+  "jei_plus_plus.creative_tab.next_page": "Next page",
   "jei_plus_plus.group.tooltip": "%s (%s items)",
   "jei_plus_plus.group.nbt": "NBT variants of %s",
   "jei_plus_plus.group.tag": "Tag: %s",

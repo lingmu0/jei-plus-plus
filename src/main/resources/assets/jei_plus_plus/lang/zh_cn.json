@@ -1,6 +1,8 @@
 {
   "jei_plus_plus.category.ingredient_directory": "物品目录",
   "jei_plus_plus.creative_tab.all": "全部物品",
+  "jei_plus_plus.creative_tab.previous_page": "上一页",
+  "jei_plus_plus.creative_tab.next_page": "下一页",
   "jei_plus_plus.group.tooltip": "%s（%s 个物品）",
   "jei_plus_plus.group.nbt": "%s 的 NBT 变体",
   "jei_plus_plus.group.tag": "标签：%s",

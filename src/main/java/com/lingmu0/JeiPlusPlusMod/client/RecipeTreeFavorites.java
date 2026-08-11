@@ -27,6 +27,7 @@ import mezz.jei.library.gui.ingredients.TagContentTooltipComponent;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
@@ -39,12 +40,14 @@ import java.util.Set;
 
 /** EMI-style, non-persistent tree products and costs appended to JEI bookmarks. */
 public final class RecipeTreeFavorites {
+    private static final long REFRESH_INTERVAL_NANOS = 200_000_000L;
     private static BookmarkList bookmarkList;
     private static List<IElement<?>> elements = List.of();
     private static Set<String> requiredIngredientKeys = Set.of();
     private static Set<String> intermediateIngredientKeys = Set.of();
     private static String signature = "";
-    private static int lastRefreshTick = Integer.MIN_VALUE;
+    private static long lastRefreshNanos = Long.MIN_VALUE;
+    private static Object lastRefreshMenu;
 
     private RecipeTreeFavorites() {
     }
@@ -86,17 +89,30 @@ public final class RecipeTreeFavorites {
             || (name.contains("beyonddimensions") && name.contains("StackTypedSlot"));
     }
 
+    /** Draws overlays for terminal entries that are not vanilla menu slots. */
+    public static void renderVirtualNetworkHighlights(
+        GuiGraphics graphics,
+        AbstractContainerScreen<?> screen
+    ) {
+        StorageNetworkIntegration.renderVirtualStorageHighlights(graphics, screen);
+    }
+
     public static void refreshThrottled() {
-        var player = Minecraft.getInstance().player;
-        int tick = player == null ? 0 : player.tickCount;
-        if (tick == lastRefreshTick || (tick & 3) != 0) {
+        long now = System.nanoTime();
+        Object menu = Ae2StorageIntegration.activeMenu();
+        long elapsed = now - lastRefreshNanos;
+        if (menu == lastRefreshMenu
+            && lastRefreshNanos != Long.MIN_VALUE
+            && elapsed >= 0L
+            && elapsed < REFRESH_INTERVAL_NANOS) {
             return;
         }
-        lastRefreshTick = tick;
         refreshNow();
     }
 
     public static void refreshNow() {
+        lastRefreshNanos = System.nanoTime();
+        lastRefreshMenu = Ae2StorageIntegration.activeMenu();
         RecipeTreeData.Tree tree = RecipeTreeSession.craftingTree();
         IJeiRuntime runtime = DirectoryRecipePlugin.getJeiRuntime();
         List<IElement<?>> next = new ArrayList<>();
