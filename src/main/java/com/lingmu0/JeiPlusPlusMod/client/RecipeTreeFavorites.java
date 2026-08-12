@@ -263,10 +263,10 @@ public final class RecipeTreeFavorites {
                 return false;
             }
             // A normal click only transfers this recipe's direct inputs.  The
-            // recursive plan is an explicit Shift-click action, including for
+            // recursive plan is an explicit Ctrl-click action, including for
             // intermediate products whose direct inputs are not in the inventory.
             boolean recursive = JeiPlusPlusConfig.AUTOMATIC_CRAFTING_ENABLED.get()
-                && net.minecraft.client.gui.screens.Screen.hasShiftDown();
+                && net.minecraft.client.gui.screens.Screen.hasControlDown();
             if (input.isSimulate()) {
                 // Claim the click during JEI's simulation pass even when no
                 // transfer is possible. Otherwise JEI falls back to opening
@@ -303,7 +303,7 @@ public final class RecipeTreeFavorites {
                     : "jei_plus_plus.recipe_tree.favorite.click";
                 tooltip.add(Component.translatable(clickKey).withStyle(ChatFormatting.AQUA));
                 if (JeiPlusPlusConfig.AUTOMATIC_CRAFTING_ENABLED.get()) {
-                    tooltip.add(Component.translatable("jei_plus_plus.recipe_tree.favorite.shift_click")
+                    tooltip.add(Component.translatable("jei_plus_plus.recipe_tree.favorite.control_click")
                         .withStyle(ChatFormatting.AQUA));
                 }
             }

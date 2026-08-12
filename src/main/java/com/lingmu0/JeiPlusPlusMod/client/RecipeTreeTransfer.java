@@ -963,7 +963,7 @@ public final class RecipeTreeTransfer {
             return selectedKey;
         }
         // A normal left-click is deliberately direct-only. Recursive
-        // candidate search is reserved for the explicit Shift-click crafting
+        // candidate search is reserved for the explicit Ctrl-click crafting
         // path; otherwise use only an inventory/network match or JEI's normal
         // first-candidate fallback.
         return RecipeTreeData.findCandidateWithSupply(slot.getItemStacks()

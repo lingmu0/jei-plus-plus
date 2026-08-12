@@ -210,7 +210,7 @@ public final class RecipeTreeDefaults {
 
     /**
      * Nugget-to-ingot conversions are intentionally excluded from automatic
-     * defaults and the explicit shift-click auto-resolution path. Explicit
+     * defaults and the explicit Ctrl-click auto-resolution path. Explicit
      * recipe choices still pass through the normal resolution path.
      */
     static boolean isExcludedFromAutomaticSelection(String recipeId) {
