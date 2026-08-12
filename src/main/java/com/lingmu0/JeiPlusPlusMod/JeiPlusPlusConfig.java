@@ -33,7 +33,7 @@ public final class JeiPlusPlusConfig {
 
     public static final ModConfigSpec.BooleanValue AUTOMATIC_CRAFTING_ENABLED =
         BUILDER
-            .comment("Allow Shift-left-click in the recipe-tree bookmarks to automatically craft missing intermediate steps.")
+            .comment("Allow Ctrl-left-click in the recipe-tree bookmarks to automatically craft missing intermediate steps.")
             .define("automaticCraftingEnabled", true);
 
     public static final ModConfigSpec.BooleanValue NBT_GROUPING_ENABLED =

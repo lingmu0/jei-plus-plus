@@ -413,7 +413,7 @@ public final class RecipeTreeData {
             }
             analyze();
             Set<String> targets = Set.copyOf(target.nodePaths());
-            // A shift-click is an explicit request to craft the clicked
+            // A Ctrl-click is an explicit request to craft the clicked
             // product again.  The normal progress pass consumes an already
             // owned product before looking at its recipe, which is correct
             // for the inventory summary but would make this action produce

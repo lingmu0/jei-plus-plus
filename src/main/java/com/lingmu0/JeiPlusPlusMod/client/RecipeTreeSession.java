@@ -201,7 +201,7 @@ public final class RecipeTreeSession {
         if (candidates.isEmpty()) {
             return false;
         }
-        // This is an explicit user action (shift-click), so resolve the first
+        // This is an explicit user action (Ctrl-click), so resolve the first
         // non-excluded candidate without consulting inventory availability.
         tree.resolve(node.ingredientKey(), candidates.getFirst().ref());
         RecipeTreeFavorites.refreshNow();

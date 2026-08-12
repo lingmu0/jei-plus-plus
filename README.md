@@ -14,7 +14,7 @@ JEI++ 是一个只在客户端运行的 JEI 附属模组，不添加方块、物
   - 配方树节点可以展开、折叠、选择配方和固定具体输入。多个等价输入槽会合并为一个节点；节点上的 `+` 会在配方树内打开候选材料窗口，选择后所有对应槽位统一使用该物品，右键可恢复候选状态。
   - 未固定输入时，所有候选都会参与库存统计、背包高亮和 JEI 配方转移。候选选择会优先使用背包中的物品，并递归查找可获得的材料链（例如原木→木板），不会按库存评分自动替换已选配方。
   - 制作模式支持拖动、缩放、份数调整、循环保护和副产物统计；最终产物、总耗材与副产物以同一竖直中心线布局。缺少的基础材料和中间产物会分别高亮。
-  - 制作模式会把目标、中间产物和基础材料追加到 JEI 书签栏，即使库存已经满足也会继续显示。提示中的已有数量实时读取背包；左键转移当前步骤所需材料，Shift+左键递归转移并只处理缺少的步骤，兼容的即时工作方块会自动取出中间产物，有加工时间的机器只放入材料。
+  - 制作模式会把目标、中间产物和基础材料追加到 JEI 书签栏，即使库存已经满足也会继续显示。提示中的已有数量实时读取背包；左键转移当前步骤所需材料，Ctrl+左键递归转移并只处理缺少的步骤，兼容的即时工作方块会自动取出中间产物，有加工时间的机器只放入材料。
   - 全局配方树按钮位于 JEI 书签/历史按钮一行，只在 JEI 界面和配方树界面显示。左键再次点击或按 E/Esc 返回，右键清除当前配方树；没有活动配方树时显示引导页。
 - **配方导航滚轮**：
   - 在顶部左右箭头与页码区域滚轮，执行上一页/下一页整页操作。
@@ -31,7 +31,7 @@ JEI++ 是一个只在客户端运行的 JEI 附属模组，不添加方块、物
 | --- | --- | --- |
 | `stackGroupingEnabled` | `true` | 物品分组总开关 |
 | `recipeTreeEnabled` | `true` | 配方树与制作助手总开关 |
-| `automaticCraftingEnabled` | `true` | 允许配方树书签 Shift+左键自动合成缺少的中间步骤 |
+| `automaticCraftingEnabled` | `true` | 允许配方树书签 Ctrl+左键自动合成缺少的中间步骤 |
 | `nbtGroupingEnabled` | `true` | 折叠相同物品的不同 NBT/组件 |
 | `tagGroupingEnabled` | `true` | 启用 Tag 分组 |
 | `jsonGroupingEnabled` | `true` | 启用 JSON 自定义分组 |
@@ -92,7 +92,7 @@ JEI++ is a client-only JEI addon. It does not add blocks, items, recipes, or oth
   - Nodes can be expanded, collapsed, assigned a recipe, or locked to a concrete input. Equivalent input slots are merged; the `+` button opens an in-tree candidate picker and right-click restores the unlocked state.
   - With no locked input, every candidate participates in inventory totals, highlighting, and JEI transfer. Candidate display prefers items already in the inventory and recursively searches craftable material chains (for example logs → planks), without replacing a selected recipe by inventory score.
   - Crafting mode supports panning, zooming, batch counts, cycle protection, and leftover reporting. The final product, total costs, and leftovers share one vertical center line, while missing base materials and intermediate products are highlighted separately.
-  - Targets, intermediates, and base costs are shown in JEI bookmarks even when already owned. Counts are refreshed from the live inventory. Left-click transfers the current step; Shift+left-click recursively transfers only missing steps, taking intermediate outputs from compatible instant stations and placing only inputs into timed machines.
+  - Targets, intermediates, and base costs are shown in JEI bookmarks even when already owned. Counts are refreshed from the live inventory. Left-click transfers the current step; Ctrl+left-click recursively transfers only missing steps, taking intermediate outputs from compatible instant stations and placing only inputs into timed machines.
   - The global tree button sits beside JEI bookmarks/history and appears only in JEI screens and the tree screen. Left-clicking it again or pressing E/Escape returns; right-clicking clears the active tree. A welcome page is shown when no tree is active.
 - **Recipe navigation scrolling**: the top arrow/page-number band performs previous/next full-page actions; the recipe-title row and category-icon row switch recipe pages and categories respectively.
 - **Bookmark recipe behavior**: bookmarked recipes keep all matching recipes while putting the bookmarked one first, and usages remain complete. With JEI bookmark-recipe priority enabled, output slots bookmark their recipe while input slots bookmark only the item; multi-output recipes use the output under the cursor.
@@ -108,7 +108,7 @@ The client configuration file is `config/jei_plus_plus-client.toml`:
 | --- | --- | --- |
 | `stackGroupingEnabled` | `true` | Master item-grouping switch |
 | `recipeTreeEnabled` | `true` | Recipe Tree and Crafting Assistant switch |
-| `automaticCraftingEnabled` | `true` | Allow Shift-left-click in recipe-tree bookmarks to auto-craft missing steps |
+| `automaticCraftingEnabled` | `true` | Allow Ctrl-left-click in recipe-tree bookmarks to auto-craft missing steps |
 | `nbtGroupingEnabled` | `true` | Group NBT/component variants |
 | `tagGroupingEnabled` | `true` | Enable tag groups |
 | `jsonGroupingEnabled` | `true` | Enable custom JSON groups |
