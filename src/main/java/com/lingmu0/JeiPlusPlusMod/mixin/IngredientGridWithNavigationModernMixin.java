@@ -13,10 +13,10 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** JEI 15.19-15.47 ingredient-grid hooks. */
+/** JEI 15.48+ ingredient-grid hooks after its overlay.ingredients package move. */
 @Pseudo
-@Mixin(targets = "mezz.jei.gui.overlay.IngredientGridWithNavigation", remap = false)
-public abstract class IngredientGridWithNavigationMixin {
+@Mixin(targets = "mezz.jei.gui.overlay.ingredients.IngredientGridWithNavigation", remap = false)
+public abstract class IngredientGridWithNavigationModernMixin {
     @ModifyVariable(method = "updateBounds", at = @At("HEAD"), argsOnly = true, ordinal = 0, remap = false)
     private ImmutableRect2i jeiPlusPlus$reserveCreativeTabRow(ImmutableRect2i availableArea) {
         return CreativeTabGridCompat.reserveRow(this, availableArea);

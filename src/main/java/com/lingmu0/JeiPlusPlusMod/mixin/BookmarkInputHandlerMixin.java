@@ -16,7 +16,6 @@ import mezz.jei.gui.input.UserInput;
 import mezz.jei.gui.input.handlers.BookmarkInputHandler;
 import mezz.jei.gui.input.handlers.SameElementInputHandler;
 import mezz.jei.gui.recipes.RecipeGuiLayouts;
-import mezz.jei.gui.recipes.RecipeLayoutWithButtons;
 import mezz.jei.gui.recipes.RecipesGui;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -37,7 +36,13 @@ import java.util.Optional;
 public abstract class BookmarkInputHandlerMixin {
     @Shadow @Final private BookmarkList bookmarkList;
 
-    @Inject(method = "handleBookmark", at = @At("HEAD"), cancellable = true, remap = false)
+    @Inject(
+        method = {"handleBookmark", "handleIngredientBookmark"},
+        at = @At("HEAD"),
+        cancellable = true,
+        require = 0,
+        remap = false
+    )
     private void jeiPlusPlus$preferRecipeBookmark(
         UserInput input,
         IInternalKeyMappings keyBindings,
@@ -56,9 +61,12 @@ public abstract class BookmarkInputHandlerMixin {
         }
 
         RecipeGuiLayouts layouts = ((RecipesGuiAccessor) (Object) recipesGui).jeiPlusPlus$getLayouts();
-        for (RecipeLayoutWithButtons<?> layoutWithButtons :
+        for (Object layoutWithButtons :
             ((RecipeGuiLayoutsAccessor) (Object) layouts).jeiPlusPlus$getRecipeLayoutsWithButtons()) {
-            IRecipeLayoutDrawable<?> layout = layoutWithButtons.recipeLayout();
+            IRecipeLayoutDrawable<?> layout = getRecipeLayout(layoutWithButtons);
+            if (layout == null) {
+                continue;
+            }
             Optional<RecipeSlotUnderMouse> slotUnderMouse = layout.getSlotUnderMouse(input.getMouseX(), input.getMouseY());
             if (slotUnderMouse.isEmpty() || slotUnderMouse.get().slot().isEmpty()) {
                 continue;
@@ -165,5 +173,24 @@ public abstract class BookmarkInputHandlerMixin {
         } catch (ReflectiveOperationException ignoredNewApi) {
             return false;
         }
+    }
+
+    /**
+     * JEI 15.21 stores its concrete record and exposes recipeLayout(), while
+     * 15.48 stores an interface and exposes getRecipeLayout(). Avoid linking
+     * against either container type so the same jar works with both.
+     */
+    private static IRecipeLayoutDrawable<?> getRecipeLayout(Object layoutWithButtons) {
+        for (String name : new String[]{"getRecipeLayout", "recipeLayout"}) {
+            try {
+                Object value = layoutWithButtons.getClass().getMethod(name).invoke(layoutWithButtons);
+                if (value instanceof IRecipeLayoutDrawable<?> layout) {
+                    return layout;
+                }
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                // Try the other JEI layout API name.
+            }
+        }
+        return null;
     }
 }

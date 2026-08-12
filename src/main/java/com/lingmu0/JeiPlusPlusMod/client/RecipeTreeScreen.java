@@ -6,6 +6,7 @@ import mezz.jei.api.gui.IRecipeLayoutDrawable;
 import mezz.jei.api.gui.drawable.IDrawable;
 import mezz.jei.api.ingredients.IIngredientHelper;
 import mezz.jei.api.ingredients.IIngredientRenderer;
+import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.api.recipe.IFocus;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.runtime.IJeiRuntime;
@@ -21,6 +22,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -605,7 +608,7 @@ public final class RecipeTreeScreen extends Screen {
         IIngredientHelper<ItemStack> helper = runtime.getIngredientManager()
             .getIngredientHelper(VanillaTypes.ITEM_STACK);
         JeiTooltip tooltip = new JeiTooltip();
-        SafeIngredientUtil.getTooltip(tooltip, runtime.getIngredientManager(), renderer, typed.get());
+        addSafeIngredientTooltip(tooltip, runtime, renderer, typed.get());
         helper.getTagKeyEquivalent(alternatives).ifPresent(tagKey -> {
             tooltip.add(Component.translatable("jei.tooltip.recipe.tag", "")
                 .withStyle(ChatFormatting.GRAY));
@@ -619,6 +622,30 @@ public final class RecipeTreeScreen extends Screen {
         graphics.pose().translate(0, 0, 700);
         tooltip.draw(graphics, mouseX, mouseY);
         graphics.pose().popPose();
+    }
+
+    /** JEI 15.48 renamed getTooltip to getRichTooltip without changing its arguments. */
+    private static void addSafeIngredientTooltip(
+        JeiTooltip tooltip,
+        IJeiRuntime runtime,
+        IIngredientRenderer<ItemStack> renderer,
+        ITypedIngredient<ItemStack> typed
+    ) {
+        for (String name : List.of("getRichTooltip", "getTooltip")) {
+            for (Method method : SafeIngredientUtil.class.getMethods()) {
+                if (!method.getName().equals(name) || method.getParameterCount() != 4) {
+                    continue;
+                }
+                try {
+                    method.invoke(null, tooltip, runtime.getIngredientManager(), renderer, typed);
+                    return;
+                } catch (IllegalAccessException ignored) {
+                    // Try the other stable method name below.
+                } catch (InvocationTargetException exception) {
+                    return;
+                }
+            }
+        }
     }
 
     private RecipeTreeData.Node hoveredNode(double mouseX, double mouseY) {

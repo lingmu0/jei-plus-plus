@@ -14,7 +14,6 @@ import mezz.jei.gui.input.IUserInputHandler;
 import mezz.jei.gui.input.UserInput;
 import mezz.jei.gui.input.handlers.CombinedInputHandler;
 import mezz.jei.gui.input.handlers.ProxyInputHandler;
-import mezz.jei.gui.overlay.IngredientGridWithNavigation;
 import mezz.jei.gui.overlay.ScreenPropertiesCache;
 import mezz.jei.gui.overlay.bookmarks.BookmarkOverlay;
 import net.minecraft.client.Minecraft;
@@ -34,8 +33,10 @@ import java.util.Optional;
 
 @Mixin(value = BookmarkOverlay.class, remap = false)
 public abstract class BookmarkOverlayMixin {
-    @Shadow @Final private IngredientGridWithNavigation contents;
     @Shadow @Final private ScreenPropertiesCache screenPropertiesCache;
+
+    @Shadow
+    public abstract boolean hasRoom();
 
     @Unique private RecipeTreeSidebarButton jeiPlusPlus$treeButton;
     @Unique private static volatile Field jeiPlusPlus$historyButtonField;
@@ -66,9 +67,6 @@ public abstract class BookmarkOverlayMixin {
         int leftWidth = Math.max(0, guiProperties.getGuiLeft());
         ImmutableRect2i bookmarkArea = new ImmutableRect2i(0, 0, leftWidth, guiProperties.getScreenHeight())
             .insetBy(6);
-        if (contents.hasRoom()) {
-            bookmarkArea = bookmarkArea.matchWidthAndX(contents.getBackgroundArea());
-        }
         bookmarkArea = bookmarkArea.keepBottom(20).keepLeft(20);
         GuiIconToggleButton historyButton = jeiPlusPlus$historyButton();
         ImmutableRect2i historyArea = jeiPlusPlus$buttonArea(historyButton);
@@ -87,7 +85,7 @@ public abstract class BookmarkOverlayMixin {
         if (JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get()
             && RecipeTreeFavorites.isActive()
             && screenPropertiesCache.hasValidScreen()
-            && contents.hasRoom()) {
+            && hasRoom()) {
             cir.setReturnValue(true);
         }
     }

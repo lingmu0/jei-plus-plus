@@ -1124,6 +1124,11 @@ public final class RecipeTreeTransfer {
             return ingredients.stream();
         }
 
+        /** Required by JEI 15.48; harmless as an extra method on older JEI. */
+        public List<ITypedIngredient<?>> getAllIngredientsList() {
+            return ingredients;
+        }
+
         @Override
         public Optional<ITypedIngredient<?>> getDisplayedIngredient() {
             return ingredients.stream().findFirst();

@@ -73,6 +73,15 @@ public final class JeiPlusPlusConfig {
         return value == null || value.get();
     }
 
+    /**
+     * Avoid transforming JEI's ingredient list twice when a dedicated JEI
+     * grouping addon owns that feature. The user setting remains untouched,
+     * so grouping automatically returns when the other addon is removed.
+     */
+    public static boolean isStackGroupingEnabled() {
+        return STACK_GROUPING_ENABLED.get() && !ExternalGroupingCompat.isGroupingModLoaded();
+    }
+
     public static final ForgeConfigSpec SPEC = BUILDER.build();
 
     private JeiPlusPlusConfig() {

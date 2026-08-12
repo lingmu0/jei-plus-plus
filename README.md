@@ -98,6 +98,7 @@ JEI++ is a client-only JEI addon. It does not add blocks, items, recipes, or oth
 - **Bookmark recipe behavior**: bookmarked recipes keep all matching recipes while putting the bookmarked one first, and usages remain complete. With JEI bookmark-recipe priority enabled, output slots bookmark their recipe while input slots bookmark only the item; multi-output recipes use the output under the cursor.
 - **Creative item tab bar**: all-items and creative categories appear above JEI's item list, with click and wheel navigation. JEI reserves the tab space, and page/count overlays render above item textures.
 - **Expandable item groups**: built-in wool, planks, logs, tools, ores, and similar groups can be expanded or collapsed. NBT/component variants of one registered item can be grouped, including potion and enchanted-book variants. Item-list, tag, and regular-expression groups are configurable through JSON; every default group has its own switch and namespace mixing is configurable.
+  - JEI++ automatically disables its own item grouping when JEI Tag Groups, JEI Groups, or Collapsible Groups is loaded, preventing two addons from transforming the JEI ingredient list at the same time.
 
 ### Configuration
 
@@ -125,4 +126,5 @@ Built-in group IDs include `wool`, `carpet`, `concrete`, `concrete_powder`, `ter
 
 - Branch `1.20.1`: Minecraft 1.20.1 + Forge, Java 17.
 - Branch `1.21.1`: Minecraft 1.21.1 + NeoForge, Java 21.
+- Development is verified with JEI `15.20.0.105` through `15.21.0.148` on 1.20.1 and JEI `19.27.0.336` through `19.44.0.401` on 1.21.1.
 - JEI is an optional client dependency; JEI client features are skipped when JEI is absent.

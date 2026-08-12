@@ -1,15 +1,10 @@
 package com.lingmu0.JeiPlusPlusMod.client;
 
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
-import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.common.gui.JeiTooltip;
-import mezz.jei.gui.overlay.IngredientGridTooltipHelper;
 import mezz.jei.gui.overlay.elements.IElement;
-import mezz.jei.gui.overlay.elements.IngredientElement;
 import mezz.jei.gui.util.FocusUtil;
 import mezz.jei.api.gui.drawable.IDrawable;
-import mezz.jei.api.ingredients.IIngredientHelper;
-import mezz.jei.api.ingredients.IIngredientRenderer;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.runtime.IRecipesGui;
 import mezz.jei.common.input.IInternalKeyMappings;
@@ -21,6 +16,10 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -50,7 +49,7 @@ public final class IngredientListFeatures {
         if (JeiPlusPlusConfig.CREATIVE_TAB_BAR_ENABLED.get() && source.jeiPlusPlus$getSelectedCreativeTab() > 0) {
             filtered = filterCreativeTab(source, original);
         }
-        if (!JeiPlusPlusConfig.STACK_GROUPING_ENABLED.get()) {
+        if (!JeiPlusPlusConfig.isStackGroupingEnabled()) {
             return filtered;
         }
         return groupElements(source, filtered);
@@ -141,10 +140,10 @@ public final class IngredientListFeatures {
                 // Keep a group control in the list while expanded.  This is
                 // the collapse affordance; without it the original group
                 // element disappears and the user can only expand once.
-                result.add(new GroupedIngredientElement(source, key, group.label, group.elements, true));
+                result.add(createGroupedIngredientElement(source, key, group.label, group.elements, true));
                 result.addAll(group.elements);
             } else {
-                result.add(new GroupedIngredientElement(source, key, group.label, group.elements, false));
+                result.add(createGroupedIngredientElement(source, key, group.label, group.elements, false));
             }
         }
         return List.copyOf(result);
@@ -171,32 +170,50 @@ public final class IngredientListFeatures {
         boolean jeiPlusPlus$isGroupExpanded(String key);
     }
 
+    /**
+     * JEI 15.48 moved the tooltip helper package and added IElement#tick.
+     * Build the group header against the interface loaded at runtime so the
+     * same jar remains valid on both sides of that internal API change.
+     */
+    private static IElement<?> createGroupedIngredientElement(
+        IngredientListFeatureSource source,
+        String groupKey,
+        Component label,
+        List<IElement<?>> elements,
+        boolean expanded
+    ) {
+        return (IElement<?>) Proxy.newProxyInstance(
+            IElement.class.getClassLoader(),
+            new Class<?>[]{IElement.class},
+            new GroupedIngredientElementHandler(source, groupKey, label, elements, expanded)
+        );
+    }
+
     /** A clickable JEI slot representing several related item variants. */
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    public static final class GroupedIngredientElement extends IngredientElement<Object> {
+    private static final class GroupedIngredientElementHandler implements InvocationHandler {
         private final IngredientListFeatureSource source;
         private final String groupKey;
         private final Component label;
         private final List<IElement<?>> elements;
         private final boolean expanded;
+        private final IElement<?> delegate;
 
-        private GroupedIngredientElement(
+        private GroupedIngredientElementHandler(
             IngredientListFeatureSource source,
             String groupKey,
             Component label,
             List<IElement<?>> elements,
             boolean expanded
         ) {
-            super((ITypedIngredient<Object>) (ITypedIngredient) elements.get(0).getTypedIngredient());
             this.source = source;
             this.groupKey = groupKey;
             this.label = label;
             this.elements = List.copyOf(elements);
             this.expanded = expanded;
+            this.delegate = elements.get(0);
         }
 
-        @Override
-        public boolean handleClick(UserInput input, IInternalKeyMappings keyBindings) {
+        private boolean handleClick(UserInput input) {
             if (input.getKey().getType() == InputConstants.Type.MOUSE && input.getKey().getValue() == 0) {
                 if (!input.isSimulate()) {
                     source.jeiPlusPlus$toggleGroup(groupKey);
@@ -207,24 +224,36 @@ public final class IngredientListFeatures {
         }
 
         @Override
-        public void show(IRecipesGui recipesGui, FocusUtil focusUtil, List<RecipeIngredientRole> roles) {
-            source.jeiPlusPlus$toggleGroup(groupKey);
+        public Object invoke(Object proxy, Method method, Object[] arguments) throws Throwable {
+            Object[] args = arguments == null ? new Object[0] : arguments;
+            return switch (method.getName()) {
+                case "handleClick" -> handleClick((UserInput) args[0]);
+                case "show" -> {
+                    source.jeiPlusPlus$toggleGroup(groupKey);
+                    yield null;
+                }
+                case "getTooltip" -> {
+                    ((JeiTooltip) args[0]).add(Component.translatable(
+                        "jei_plus_plus.group.tooltip",
+                        label,
+                        elements.size()
+                    ));
+                    yield invokeDelegate(method, args);
+                }
+                case "createRenderOverlay" -> new GroupCountOverlay(elements.size(), expanded);
+                case "equals" -> proxy == args[0];
+                case "hashCode" -> System.identityHashCode(proxy);
+                case "toString" -> "JEI++ grouped ingredient " + groupKey;
+                default -> invokeDelegate(method, args);
+            };
         }
 
-        @Override
-        public void getTooltip(
-            JeiTooltip tooltip,
-            IngredientGridTooltipHelper tooltipHelper,
-            IIngredientRenderer<Object> ingredientRenderer,
-            IIngredientHelper<Object> ingredientHelper
-        ) {
-            tooltip.add(Component.translatable("jei_plus_plus.group.tooltip", label, elements.size()));
-            super.getTooltip(tooltip, tooltipHelper, ingredientRenderer, ingredientHelper);
-        }
-
-        @Override
-        public @Nullable IDrawable createRenderOverlay() {
-            return new GroupCountOverlay(elements.size(), expanded);
+        private Object invokeDelegate(Method method, Object[] args) throws Throwable {
+            try {
+                return method.invoke(delegate, args);
+            } catch (InvocationTargetException exception) {
+                throw exception.getCause();
+            }
         }
     }
 

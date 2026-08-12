@@ -5,6 +5,7 @@ import mezz.jei.api.gui.builder.IRecipeLayoutBuilder;
 import mezz.jei.api.gui.drawable.IDrawable;
 import mezz.jei.api.helpers.IGuiHelper;
 import mezz.jei.api.recipe.IFocusGroup;
+import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.recipe.RecipeType;
 import mezz.jei.api.recipe.category.IRecipeCategory;
 import mezz.jei.api.gui.ingredient.IRecipeSlotsView;
@@ -26,9 +27,11 @@ public final class DirectoryRecipeCategory implements IRecipeCategory<DirectoryR
     private static final int WIDTH = COLUMNS * SLOT_SPACING + 6;
     private static final int HEIGHT = ROWS * SLOT_SPACING + 8;
 
+    private final IDrawable background;
     private final IDrawable icon;
 
     public DirectoryRecipeCategory(IGuiHelper guiHelper) {
+        this.background = guiHelper.createBlankDrawable(WIDTH, HEIGHT);
         this.icon = guiHelper.createDrawableItemStack(Items.BOOK.getDefaultInstance());
     }
 
@@ -53,6 +56,11 @@ public final class DirectoryRecipeCategory implements IRecipeCategory<DirectoryR
     }
 
     @Override
+    public IDrawable getBackground() {
+        return background;
+    }
+
+    @Override
     public IDrawable getIcon() {
         return icon;
     }
@@ -64,7 +72,7 @@ public final class DirectoryRecipeCategory implements IRecipeCategory<DirectoryR
         for (int i = 0; i < limit; i++) {
             int x = 3 + (i % COLUMNS) * SLOT_SPACING;
             int y = 3 + (i / COLUMNS) * SLOT_SPACING;
-            builder.addInputSlot(x, y)
+            builder.addSlot(RecipeIngredientRole.INPUT, x, y)
                 .addTypedIngredient(ingredients.get(i))
                 .setStandardSlotBackground();
         }

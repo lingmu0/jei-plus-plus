@@ -6,12 +6,13 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import mezz.jei.api.gui.IRecipeLayoutDrawable;
 import mezz.jei.common.Internal;
 import mezz.jei.gui.recipes.RecipeGuiLayouts;
-import mezz.jei.gui.recipes.RecipeLayoutWithButtons;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.network.chat.Component;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 
 /** Draws and routes tree/default actions for JEI 15.x recipe layouts. */
@@ -26,8 +27,8 @@ public final class RecipeTreeOverlay {
         if (!JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get()) {
             return;
         }
-        for (RecipeLayoutWithButtons<?> wrapper : wrappers(layouts)) {
-            IRecipeLayoutDrawable<?> layout = wrapper.recipeLayout();
+        for (LayoutWrapper wrapper : wrappers(layouts)) {
+            IRecipeLayoutDrawable<?> layout = wrapper.layout();
             RecipeTreeData.RecipeSnapshot snapshot = RecipeTreeData.snapshot(layout).orElse(null);
             if (snapshot == null) {
                 continue;
@@ -66,8 +67,8 @@ public final class RecipeTreeOverlay {
         if (!JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get() || button != 0) {
             return false;
         }
-        for (RecipeLayoutWithButtons<?> wrapper : wrappers(layouts)) {
-            IRecipeLayoutDrawable<?> layout = wrapper.recipeLayout();
+        for (LayoutWrapper wrapper : wrappers(layouts)) {
+            IRecipeLayoutDrawable<?> layout = wrapper.layout();
             RecipeTreeData.RecipeSnapshot snapshot = RecipeTreeData.snapshot(layout).orElse(null);
             if (snapshot == null) {
                 continue;
@@ -97,12 +98,12 @@ public final class RecipeTreeOverlay {
         }
 
         int requiredWidth = baseWidth;
-        for (RecipeLayoutWithButtons<?> wrapper : wrappers(layouts)) {
-            if (RecipeTreeData.snapshot(wrapper.recipeLayout()).isEmpty()) {
+        for (LayoutWrapper wrapper : wrappers(layouts)) {
+            if (RecipeTreeData.snapshot(wrapper.layout()).isEmpty()) {
                 continue;
             }
-            Rect2i rect = wrapper.recipeLayout().getRect();
-            Rect2i bordered = wrapper.recipeLayout().getRectWithBorder();
+            Rect2i rect = wrapper.layout().getRect();
+            Rect2i bordered = wrapper.layout().getRectWithBorder();
             Rect2i last = buttonArea(wrapper, 1);
             int leftBorder = rect.getX() - bordered.getX();
             int right = last.getX() + last.getWidth() - rect.getX();
@@ -111,19 +112,26 @@ public final class RecipeTreeOverlay {
         return Math.max(0, requiredWidth - baseWidth);
     }
 
-    private static List<RecipeLayoutWithButtons<?>> wrappers(RecipeGuiLayouts layouts) {
-        return ((RecipeGuiLayoutsAccessor) layouts).jeiPlusPlus$getRecipeLayoutsWithButtons();
+    private static List<LayoutWrapper> wrappers(RecipeGuiLayouts layouts) {
+        List<LayoutWrapper> result = new ArrayList<>();
+        for (Object wrapper : ((RecipeGuiLayoutsAccessor) layouts).jeiPlusPlus$getRecipeLayoutsWithButtons()) {
+            LayoutWrapper view = LayoutWrapper.create(wrapper);
+            if (view != null) {
+                result.add(view);
+            }
+        }
+        return result;
     }
 
-    private static Rect2i buttonArea(RecipeLayoutWithButtons<?> wrapper, int index) {
-        IRecipeLayoutDrawable<?> layout = wrapper.recipeLayout();
+    private static Rect2i buttonArea(LayoutWrapper wrapper, int index) {
+        IRecipeLayoutDrawable<?> layout = wrapper.layout();
         Rect2i rect = layout.getRect();
         Rect2i buttonArea = layout.getRecipeTransferButtonArea();
         int buttonIndex = index;
-        if (wrapper.transferButton().isVisible()) {
+        if (wrapper.transferVisible()) {
             buttonIndex++;
         }
-        if (wrapper.bookmarkButton().isVisible()) {
+        if (wrapper.bookmarkVisible()) {
             buttonIndex++;
         }
         if (buttonArea.getWidth() <= 0 || buttonArea.getHeight() <= 0) {
@@ -165,5 +173,53 @@ public final class RecipeTreeOverlay {
     private static boolean contains(Rect2i area, double mouseX, double mouseY) {
         return mouseX >= area.getX() && mouseX < area.getX() + area.getWidth()
             && mouseY >= area.getY() && mouseY < area.getY() + area.getHeight();
+    }
+
+    /**
+     * JEI 15.21 stores a concrete RecipeLayoutWithButtons record, while
+     * 15.48 stores IRecipeLayoutWithButtons and may include an errored wrapper.
+     * Reflect only the stable concrete controls and skip errored layouts.
+     */
+    private record LayoutWrapper(
+        IRecipeLayoutDrawable<?> layout,
+        boolean transferVisible,
+        boolean bookmarkVisible
+    ) {
+        private static LayoutWrapper create(Object wrapper) {
+            IRecipeLayoutDrawable<?> layout = invokeLayout(wrapper, "getRecipeLayout", "recipeLayout");
+            Object transferButton = invoke(wrapper, "transferButton");
+            Object bookmarkButton = invoke(wrapper, "bookmarkButton");
+            if (layout == null || transferButton == null || bookmarkButton == null) {
+                return null;
+            }
+            return new LayoutWrapper(
+                layout,
+                invokeBoolean(transferButton, "isVisible"),
+                invokeBoolean(bookmarkButton, "isVisible")
+            );
+        }
+
+        private static IRecipeLayoutDrawable<?> invokeLayout(Object target, String... names) {
+            for (String name : names) {
+                Object value = invoke(target, name);
+                if (value instanceof IRecipeLayoutDrawable<?> layout) {
+                    return layout;
+                }
+            }
+            return null;
+        }
+
+        private static Object invoke(Object target, String name) {
+            try {
+                Method method = target.getClass().getMethod(name);
+                return method.invoke(target);
+            } catch (ReflectiveOperationException | RuntimeException ignored) {
+                return null;
+            }
+        }
+
+        private static boolean invokeBoolean(Object target, String name) {
+            return Boolean.TRUE.equals(invoke(target, name));
+        }
     }
 }
