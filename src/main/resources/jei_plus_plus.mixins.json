@@ -19,6 +19,7 @@
     "RecipeGuiLayoutsAccessor",
     "IngredientFilterMixin",
     "IngredientGridWithNavigationMixin",
+    "IngredientGridWithNavigationModernMixin",
     "IntegratedTerminalScreenMixin",
     "AbstractContainerScreenMixin"
   ],

@@ -55,7 +55,7 @@ public abstract class IngredientFilterMixin implements IngredientListFeatureSour
     @Inject(method = "getElements", at = @At("RETURN"), cancellable = true, remap = false)
     private void jeiPlusPlus$transformElements(CallbackInfoReturnable<List<IElement<?>>> cir) {
         boolean creativeEnabled = JeiPlusPlusConfig.CREATIVE_TAB_BAR_ENABLED.get();
-        boolean groupingEnabled = JeiPlusPlusConfig.STACK_GROUPING_ENABLED.get();
+        boolean groupingEnabled = JeiPlusPlusConfig.isStackGroupingEnabled();
         if (!creativeEnabled && !groupingEnabled) {
             return;
         }

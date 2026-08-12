@@ -1,9 +1,7 @@
 package com.lingmu0.JeiPlusPlusMod.mixin;
 
 import mezz.jei.gui.elements.IconButton;
-import mezz.jei.api.gui.IRecipeLayoutDrawable;
 import mezz.jei.gui.recipes.RecipeLayoutWithButtons;
-import mezz.jei.gui.recipes.RecipeTransferButtonController;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -19,12 +17,7 @@ public abstract class RecipeLayoutWithButtonsMixin {
     @Shadow @Final private List<IconButton> buttons;
 
     @Inject(method = "<init>", at = @At("RETURN"), remap = false)
-    private void jeiPlusPlus$removeNativeRecipeBookmarkButton(
-        IRecipeLayoutDrawable<?> recipeLayout,
-        RecipeTransferButtonController transferButton,
-        List<IconButton> createdButtons,
-        CallbackInfo ci
-    ) {
+    private void jeiPlusPlus$removeNativeRecipeBookmarkButton(CallbackInfo ci) {
         // JEI creates buttons in the fixed order: transfer, recipe bookmark,
         // then registered extra buttons. Removing index 1 keeps the extra
         // buttons contiguous and makes JEI recalculate their side positions.

@@ -13,7 +13,6 @@ import mezz.jei.gui.input.IUserInputHandler;
 import mezz.jei.gui.input.UserInput;
 import mezz.jei.gui.input.handlers.CombinedInputHandler;
 import mezz.jei.gui.input.handlers.ProxyInputHandler;
-import mezz.jei.gui.overlay.IngredientGridWithNavigation;
 import mezz.jei.gui.overlay.bookmarks.BookmarkOverlay;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -32,8 +31,10 @@ import java.util.Optional;
 
 @Mixin(value = BookmarkOverlay.class, remap = false)
 public abstract class BookmarkOverlayMixin {
-    @Shadow @Final private IngredientGridWithNavigation contents;
     @Shadow @Final private IconButton historyButton;
+
+    @Shadow
+    public abstract boolean hasRoom();
 
     @Unique private IconButton jeiPlusPlus$treeButton;
 
@@ -73,7 +74,7 @@ public abstract class BookmarkOverlayMixin {
 
     @Inject(method = "isListDisplayed", at = @At("RETURN"), cancellable = true, remap = false)
     private void jeiPlusPlus$showTreeFavorites(CallbackInfoReturnable<Boolean> cir) {
-        if (RecipeTreeFavorites.isActive() && jeiPlusPlus$isTreeButtonScreen() && contents.hasRoom()) {
+        if (RecipeTreeFavorites.isActive() && jeiPlusPlus$isTreeButtonScreen() && hasRoom()) {
             cir.setReturnValue(true);
         }
     }
@@ -86,6 +87,30 @@ public abstract class BookmarkOverlayMixin {
         int mouseY,
         float partialTicks,
         CallbackInfo ci
+    ) {
+        jeiPlusPlus$drawTreeButton(minecraft, graphics, mouseX, mouseY, partialTicks);
+    }
+
+    /** JEI 19.42+ draws bookmark overlays through the foreground pass. */
+    @Inject(method = "drawForeground", at = @At("TAIL"), require = 0, remap = false)
+    private void jeiPlusPlus$drawTreeButtonModern(
+        Minecraft minecraft,
+        GuiGraphics graphics,
+        int mouseX,
+        int mouseY,
+        float partialTicks,
+        CallbackInfo ci
+    ) {
+        jeiPlusPlus$drawTreeButton(minecraft, graphics, mouseX, mouseY, partialTicks);
+    }
+
+    @Unique
+    private void jeiPlusPlus$drawTreeButton(
+        Minecraft minecraft,
+        GuiGraphics graphics,
+        int mouseX,
+        int mouseY,
+        float partialTicks
     ) {
         if (!jeiPlusPlus$isTreeButtonScreen()) {
             return;

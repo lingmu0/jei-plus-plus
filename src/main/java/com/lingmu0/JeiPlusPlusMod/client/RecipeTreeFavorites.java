@@ -20,7 +20,6 @@ import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.BookmarkType;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.input.UserInput;
-import mezz.jei.gui.overlay.IngredientGridTooltipHelper;
 import mezz.jei.gui.overlay.elements.IElement;
 import mezz.jei.gui.util.FocusUtil;
 import mezz.jei.library.gui.ingredients.TagContentTooltipComponent;
@@ -37,6 +36,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 
 /** EMI-style, non-persistent tree products and costs appended to JEI bookmarks. */
 public final class RecipeTreeFavorites {
@@ -199,7 +202,7 @@ public final class RecipeTreeFavorites {
     }
 
     private static final class SyntheticBookmark implements IBookmark {
-        private final SyntheticElement element;
+        private final IElement<?> element;
         private final BookmarkType type;
 
         private SyntheticBookmark(
@@ -209,7 +212,7 @@ public final class RecipeTreeFavorites {
             boolean intermediate
         ) {
             this.type = step == null ? BookmarkType.INGREDIENT : BookmarkType.RECIPE;
-            this.element = new SyntheticElement(this, typed, step, cost, intermediate);
+            this.element = SyntheticElement.create(this, typed, step, cost, intermediate);
         }
 
         @Override
@@ -232,7 +235,12 @@ public final class RecipeTreeFavorites {
         }
     }
 
-    private static final class SyntheticElement implements IElement<ItemStack> {
+    /**
+     * Runtime IElement proxy for JEI 19.27-19.44 compatibility. JEI 19.44
+     * moved its tooltip helper package and added IElement#tick, so a concrete
+     * implementation compiled against either side cannot run on the other.
+     */
+    private static final class SyntheticElement implements InvocationHandler {
         private final IBookmark bookmark;
         private final ITypedIngredient<ItemStack> typed;
         private final RecipeTreeData.CraftStep step;
@@ -253,18 +261,21 @@ public final class RecipeTreeFavorites {
             this.intermediate = intermediate;
         }
 
-        @Override
-        public ITypedIngredient<ItemStack> getTypedIngredient() {
-            return typed;
+        private static IElement<?> create(
+            IBookmark bookmark,
+            ITypedIngredient<ItemStack> typed,
+            RecipeTreeData.CraftStep step,
+            RecipeTreeData.Cost cost,
+            boolean intermediate
+        ) {
+            return (IElement<?>) Proxy.newProxyInstance(
+                IElement.class.getClassLoader(),
+                new Class<?>[]{IElement.class},
+                new SyntheticElement(bookmark, typed, step, cost, intermediate)
+            );
         }
 
-        @Override
-        public Optional<IBookmark> getBookmark() {
-            return Optional.of(bookmark);
-        }
-
-        @Override
-        public IDrawable createRenderOverlay() {
+        private IDrawable createRenderOverlay() {
             long remaining = Math.max(0, total() - owned());
             int color = step == null
                 ? (remaining == 0 ? 0xFF55FF55 : 0xFFFF5555)
@@ -272,9 +283,8 @@ public final class RecipeTreeFavorites {
             return new AmountOverlay(remaining, color);
         }
 
-        @Override
         @SuppressWarnings({"rawtypes", "unchecked"})
-        public void show(IRecipesGui recipesGui, FocusUtil focusUtil, List<RecipeIngredientRole> roles) {
+        private void show(IRecipesGui recipesGui, FocusUtil focusUtil, List<RecipeIngredientRole> roles) {
             if (step != null) {
                 IRecipeCategory category = step.recipe().category();
                 recipesGui.showRecipes(category, List.of(step.recipe().recipe()), List.<IFocus<?>>of());
@@ -284,8 +294,7 @@ public final class RecipeTreeFavorites {
             recipesGui.show(focuses);
         }
 
-        @Override
-        public boolean handleClick(UserInput input, IInternalKeyMappings keyBindings) {
+        private boolean handleClick(UserInput input) {
             if (step == null
                 || input.getKey().getType() != InputConstants.Type.MOUSE
                 || input.getKey().getValue() != 0) {
@@ -306,14 +315,11 @@ public final class RecipeTreeFavorites {
             return true;
         }
 
-        @Override
-        public void getTooltip(
-            JeiTooltip tooltip,
-            IngredientGridTooltipHelper tooltipHelper,
-            IIngredientRenderer<ItemStack> ingredientRenderer,
-            IIngredientHelper<ItemStack> ingredientHelper
-        ) {
-            tooltipHelper.getIngredientTooltip(tooltip, typed, ingredientRenderer, ingredientHelper);
+        @SuppressWarnings("unchecked")
+        private void getTooltip(JeiTooltip tooltip, Object tooltipHelper, Object renderer, Object helper) throws Throwable {
+            IIngredientRenderer<ItemStack> ingredientRenderer = (IIngredientRenderer<ItemStack>) renderer;
+            IIngredientHelper<ItemStack> ingredientHelper = (IIngredientHelper<ItemStack>) helper;
+            invokeIngredientTooltipHelper(tooltipHelper, tooltip, ingredientRenderer, ingredientHelper);
             List<ItemStack> alternatives = tooltipAlternatives();
             if (alternatives.size() > 1) {
                 ingredientHelper.getTagKeyEquivalent(alternatives).ifPresent(tagKey -> {
@@ -343,6 +349,55 @@ public final class RecipeTreeFavorites {
             }
         }
 
+        @Override
+        @SuppressWarnings("unchecked")
+        public Object invoke(Object proxy, Method method, Object[] arguments) throws Throwable {
+            Object[] args = arguments == null ? new Object[0] : arguments;
+            return switch (method.getName()) {
+                case "getTypedIngredient" -> typed;
+                case "getBookmark" -> Optional.of(bookmark);
+                case "createRenderOverlay" -> createRenderOverlay();
+                case "show" -> {
+                    show((IRecipesGui) args[0], (FocusUtil) args[1], (List<RecipeIngredientRole>) args[2]);
+                    yield null;
+                }
+                case "handleClick" -> handleClick((UserInput) args[0]);
+                case "getTooltip" -> {
+                    getTooltip((JeiTooltip) args[0], args[1], args[2], args[3]);
+                    yield null;
+                }
+                case "isVisible" -> true;
+                case "tick" -> null;
+                case "equals" -> proxy == args[0];
+                case "hashCode" -> System.identityHashCode(proxy);
+                case "toString" -> "JEI++ recipe-tree bookmark " + typed.getIngredient();
+                default -> throw new UnsupportedOperationException("Unsupported JEI element method: " + method);
+            };
+        }
+
+        private void invokeIngredientTooltipHelper(
+            Object tooltipHelper,
+            JeiTooltip tooltip,
+            IIngredientRenderer<ItemStack> ingredientRenderer,
+            IIngredientHelper<ItemStack> ingredientHelper
+        ) throws Throwable {
+            Method target = null;
+            for (Method method : tooltipHelper.getClass().getMethods()) {
+                if (method.getName().equals("getIngredientTooltip") && method.getParameterCount() == 4) {
+                    target = method;
+                    break;
+                }
+            }
+            if (target == null) {
+                throw new NoSuchMethodException(tooltipHelper.getClass().getName() + "#getIngredientTooltip");
+            }
+            try {
+                target.invoke(tooltipHelper, tooltip, typed, ingredientRenderer, ingredientHelper);
+            } catch (InvocationTargetException exception) {
+                throw exception.getCause();
+            }
+        }
+
         private List<ItemStack> tooltipAlternatives() {
             List<ItemStack> source = step == null
                 ? (cost == null ? List.of(typed.getIngredient()) : cost.alternatives())
@@ -367,10 +422,6 @@ public final class RecipeTreeFavorites {
             return step == null ? cost.required() : step.total();
         }
 
-        @Override
-        public boolean isVisible() {
-            return true;
-        }
     }
 
     private record AmountOverlay(long value, int color) implements IDrawable {

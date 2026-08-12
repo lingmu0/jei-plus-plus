@@ -13,16 +13,16 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** JEI 19.27-19.41 ingredient-grid hooks. */
+/** JEI 19.42+ ingredient-grid hooks after its overlay.ingredients package move. */
 @Pseudo
-@Mixin(targets = "mezz.jei.gui.overlay.IngredientGridWithNavigation", remap = false)
-public abstract class IngredientGridWithNavigationMixin {
+@Mixin(targets = "mezz.jei.gui.overlay.ingredients.IngredientGridWithNavigation", remap = false)
+public abstract class IngredientGridWithNavigationModernMixin {
     @ModifyVariable(method = "updateBounds", at = @At("HEAD"), argsOnly = true, ordinal = 0, remap = false)
     private ImmutableRect2i jeiPlusPlus$reserveCreativeTabRow(ImmutableRect2i availableArea) {
         return CreativeTabGridCompat.reserveRow(this, availableArea);
     }
 
-    @Inject(method = "draw", at = @At("TAIL"), remap = false)
+    @Inject(method = "drawForeground", at = @At("TAIL"), remap = false)
     private void jeiPlusPlus$drawCreativeTabs(
         Minecraft minecraft,
         GuiGraphics graphics,

@@ -35,7 +35,13 @@ import java.util.Collection;
 public abstract class BookmarkInputHandlerMixin {
     @Shadow @Final private BookmarkList bookmarkList;
 
-    @Inject(method = "handleBookmark", at = @At("HEAD"), cancellable = true, remap = false)
+    @Inject(
+        method = {"handleBookmark", "handleIngredientBookmark"},
+        at = @At("HEAD"),
+        cancellable = true,
+        require = 0,
+        remap = false
+    )
     private void jeiPlusPlus$preferRecipeBookmark(
         UserInput input,
         IInternalKeyMappings keyBindings,
