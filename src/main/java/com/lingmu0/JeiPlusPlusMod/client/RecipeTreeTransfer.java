@@ -611,7 +611,7 @@ public final class RecipeTreeTransfer {
             return false;
         }
         IRecipeSlotsView slots = adjustInputs(
-            layout.getRecipeSlotsView(), selectedInputs, batches, recursiveCandidates
+            layout.getRecipeSlotsView(), selectedInputs, batches, recursiveCandidates, player
         );
         IRecipeTransferError validation;
         try {
@@ -632,7 +632,7 @@ public final class RecipeTreeTransfer {
         // one set, even when an adjusted ingredient stack contains a larger
         // count. Fill the real recipe slots directly so the configured batch
         // count is honoured before crafting or recursive output extraction.
-        if (batches > 1) {
+        if (batches > 1 && !containsFluidInput(layout.getRecipeSlotsView())) {
             Boolean exact = transferExactInputs(
                 handler.get(),
                 menu,
@@ -895,7 +895,8 @@ public final class RecipeTreeTransfer {
         IRecipeSlotsView original,
         List<String> selectedInputs,
         int batches,
-        boolean recursiveCandidates
+        boolean recursiveCandidates,
+        Player player
     ) {
         List<IRecipeSlotView> adjusted = new ArrayList<>();
         int inputIndex = 0;
@@ -906,7 +907,7 @@ public final class RecipeTreeTransfer {
                     inputIndex < selectedInputs.size() ? selectedInputs.get(inputIndex) : "",
                     recursiveCandidates
                 );
-                adjusted.add(new AdjustedSlot(slot, selected, batches));
+                adjusted.add(new AdjustedSlot(slot, selected, batches, player));
                 inputIndex++;
             } else {
                 adjusted.add(slot);
@@ -914,6 +915,13 @@ public final class RecipeTreeTransfer {
         }
         List<IRecipeSlotView> immutable = List.copyOf(adjusted);
         return () -> immutable;
+    }
+
+    private static boolean containsFluidInput(IRecipeSlotsView slots) {
+        return slots.getSlotViews().stream()
+            .filter(slot -> slot.getRole() == RecipeIngredientRole.INPUT)
+            .flatMap(IRecipeSlotView::getAllIngredients)
+            .anyMatch(ingredient -> FluidRecipeCompat.fluid(ingredient).isPresent());
     }
 
     private static int maxBatchesPerTransfer(
@@ -934,7 +942,7 @@ public final class RecipeTreeTransfer {
                 recursiveCandidates
             );
             inputIndex++;
-            int slotCapacity = slot.getItemStacks()
+            int slotCapacity = RecipeTreeData.candidateStacks(slot).stream()
                 .filter(stack -> selected.isEmpty() || RecipeTreeData.ingredientKey(stack).equals(selected))
                 .mapToInt(stack -> Math.max(1, stack.getMaxStackSize() / Math.max(1, stack.getCount())))
                 .max()
@@ -966,9 +974,8 @@ public final class RecipeTreeTransfer {
         // candidate search is reserved for the explicit Ctrl-click crafting
         // path; otherwise use only an inventory/network match or JEI's normal
         // first-candidate fallback.
-        return RecipeTreeData.findCandidateWithSupply(slot.getItemStacks()
-                .filter(stack -> !stack.isEmpty())
-                .toList(),
+        return RecipeTreeData.findCandidateWithSupply(
+                RecipeTreeData.candidateStacks(slot),
             recursiveCandidates && RecipeTreeSession.tree() != null)
             .map(RecipeTreeData::ingredientKey)
             .orElse("");
@@ -1029,7 +1036,7 @@ public final class RecipeTreeTransfer {
                 index < selectedInputs.size() ? selectedInputs.get(index) : "",
                 recursiveCandidates
             );
-            ItemStack template = input.getItemStacks()
+            ItemStack template = RecipeTreeData.candidateStacks(input).stream()
                 .filter(stack -> !stack.isEmpty())
                 .filter(stack -> selected.isEmpty() || RecipeTreeData.ingredientKey(stack).equals(selected))
                 .findFirst()
@@ -1086,7 +1093,7 @@ public final class RecipeTreeTransfer {
         private final IRecipeSlotView delegate;
         private final List<ITypedIngredient<?>> ingredients;
 
-        private AdjustedSlot(IRecipeSlotView delegate, String selectedKey, int batches) {
+        private AdjustedSlot(IRecipeSlotView delegate, String selectedKey, int batches, Player player) {
             this.delegate = delegate;
             IJeiRuntime runtime = DirectoryRecipePlugin.getJeiRuntime();
             List<ITypedIngredient<?>> adjusted = new ArrayList<>();
@@ -1094,7 +1101,20 @@ public final class RecipeTreeTransfer {
                 delegate.getAllIngredients().forEach(ingredient -> {
                     Optional<ItemStack> itemStack = ingredient.getItemStack();
                     if (itemStack.isEmpty()) {
-                        if (selectedKey.isEmpty()) {
+                        // Preserve FluidStack ingredients for custom tank
+                        // handlers and add matching filled containers for
+                        // handlers that expose an item input slot instead.
+                        Optional<net.minecraftforge.fluids.FluidStack> fluid =
+                            FluidRecipeCompat.fluid(ingredient);
+                        if (fluid.isPresent()) {
+                            FluidRecipeCompat.scaled(ingredient, batches, runtime.getIngredientManager())
+                                .ifPresent(adjusted::add);
+                            for (ItemStack container : FluidRecipeCompat.matchingContainers(player, fluid.get(), batches)) {
+                                runtime.getIngredientManager()
+                                    .createTypedIngredient(VanillaTypes.ITEM_STACK, container)
+                                    .ifPresent(adjusted::add);
+                            }
+                        } else {
                             adjusted.add(ingredient);
                         }
                         return;

@@ -5,18 +5,22 @@ import mezz.jei.api.recipe.IFocus;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.runtime.IRecipesGui;
 import mezz.jei.gui.overlay.elements.RecipeBookmarkElement;
+import mezz.jei.gui.bookmarks.IBookmark;
+import mezz.jei.gui.bookmarks.RecipeBookmark;
 import mezz.jei.gui.util.FocusUtil;
+import com.lingmu0.JeiPlusPlusMod.client.RecipeBookmarkNavigationContext;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
- * A recipe bookmark is still the preferred result, but the lookup now keeps
- * all matching recipes/usages available. JEI's BOOKMARKED sorter stage places
- * the bookmarked recipe first when that JEI option is enabled.
+ * A recipe bookmark opens the complete cross-category lookup for its output or
+ * input. JEI's bookmark sorter keeps the bookmarked recipe at the front while
+ * retaining every matching recipe from every work block.
  */
 @Mixin(value = RecipeBookmarkElement.class, remap = false)
 public abstract class RecipeBookmarkElementMixin {
@@ -29,11 +33,50 @@ public abstract class RecipeBookmarkElementMixin {
     ) {
         RecipeBookmarkElement<?, ?> element = (RecipeBookmarkElement<?, ?>) (Object) this;
         ITypedIngredient<?> ingredient = element.getTypedIngredient();
-        List<RecipeIngredientRole> lookupRoles = roles.isEmpty()
-            ? List.of(RecipeIngredientRole.OUTPUT)
-            : roles;
+        Optional<IBookmark> elementBookmark = element.getBookmark();
+        List<RecipeIngredientRole> lookupRoles = jeiPlusPlus$bookmarkRoles(elementBookmark, roles);
         List<IFocus<?>> focuses = focusUtil.createFocuses(ingredient, lookupRoles);
-        recipesGui.show(focuses);
+        showAllMatchingRecipes(recipesGui, focuses, element);
         ci.cancel();
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void showAllMatchingRecipes(
+        IRecipesGui recipesGui,
+        List<IFocus<?>> focuses,
+        RecipeBookmarkElement<?, ?> element
+    ) {
+        // show(focuses) is deliberately used instead of showRecipes(category,
+        // ...): the latter restricts the page to the machine category that
+        // owns the bookmark. JEI's normal BOOKMARKED sorter then places this
+        // bookmark's recipe first in the complete cross-category result.
+        Optional<IBookmark> bookmark = element.getBookmark();
+        if (bookmark.orElse(null) instanceof RecipeBookmark<?, ?> recipeBookmark) {
+            RecipeBookmarkNavigationContext.showInCategoryFirst(
+                recipeBookmark.getRecipeCategory(),
+                () -> recipesGui.show(focuses)
+            );
+        } else {
+            recipesGui.show(focuses);
+        }
+    }
+
+    private static List<RecipeIngredientRole> jeiPlusPlus$bookmarkRoles(
+        Optional<IBookmark> bookmark,
+        List<RecipeIngredientRole> fallback
+    ) {
+        Object value = bookmark.orElse(null);
+        if (!(value instanceof RecipeBookmark<?, ?>)) {
+            return fallback.isEmpty() ? List.of(RecipeIngredientRole.OUTPUT) : fallback;
+        }
+        try {
+            Object output = value.getClass().getMethod("isDisplayIsOutput").invoke(value);
+            if (output instanceof Boolean isOutput) {
+                return List.of(isOutput ? RecipeIngredientRole.OUTPUT : RecipeIngredientRole.INPUT);
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // Older JEI recipe bookmarks do not expose the output flag.
+        }
+        return List.of(RecipeIngredientRole.OUTPUT);
     }
 }

@@ -56,6 +56,11 @@ public final class RecipeTreeData {
     private RecipeTreeData() {
     }
 
+    private static ItemStack copyStack(ItemStack stack) {
+        ItemStack copy = FluidRecipeCompat.copyWithDisplay(stack);
+        return copy == null ? ItemStack.EMPTY : copy;
+    }
+
     public enum Progress {
         UNSTARTED,
         PARTIAL,
@@ -75,13 +80,13 @@ public final class RecipeTreeData {
         public RecipeInput {
             alternatives = alternatives.stream()
                 .filter(stack -> stack != null && !stack.isEmpty())
-                .map(ItemStack::copy)
+                .map(RecipeTreeData::copyStack)
                 .toList();
             slotIndexes = List.copyOf(slotIndexes);
         }
 
         public ItemStack first() {
-            return alternatives.isEmpty() ? ItemStack.EMPTY : alternatives.get(0).copy();
+            return alternatives.isEmpty() ? ItemStack.EMPTY : copyStack(alternatives.get(0));
         }
     }
 
@@ -142,10 +147,10 @@ public final class RecipeTreeData {
             List<Integer> inputSlotIndexes,
             boolean explicitChoice
         ) {
-            this.stack = stack.copy();
+            this.stack = copyStack(stack);
             this.ingredientKey = RecipeTreeData.ingredientKey(stack);
             this.recipe = recipe;
-            this.alternatives = alternatives.stream().map(ItemStack::copy).toList();
+            this.alternatives = alternatives.stream().map(RecipeTreeData::copyStack).toList();
             this.choiceKey = choiceKey;
             this.path = path;
             this.inputSlotIndexes = List.copyOf(inputSlotIndexes);
@@ -170,6 +175,10 @@ public final class RecipeTreeData {
 
         public boolean hasAlternatives() {
             return alternatives.size() > 1;
+        }
+
+        public boolean isOutputChoice() {
+            return recipe != null && "root".equals(path) && hasAlternatives();
         }
 
         public boolean explicitChoice() {
@@ -224,8 +233,8 @@ public final class RecipeTreeData {
 
     public record Cost(ItemStack stack, List<ItemStack> alternatives, long required, long supplied) {
         public Cost {
-            stack = stack.copy();
-            alternatives = alternatives.stream().map(ItemStack::copy).toList();
+            stack = copyStack(stack);
+            alternatives = alternatives.stream().map(RecipeTreeData::copyStack).toList();
         }
     }
 
@@ -244,8 +253,8 @@ public final class RecipeTreeData {
         List<String> nodePaths
     ) {
         public CraftStep {
-            stack = stack.copy();
-            alternatives = alternatives.stream().map(ItemStack::copy).toList();
+            stack = copyStack(stack);
+            alternatives = alternatives.stream().map(RecipeTreeData::copyStack).toList();
             selectedInputs = List.copyOf(selectedInputs);
             nodePaths = List.copyOf(nodePaths);
         }
@@ -253,8 +262,10 @@ public final class RecipeTreeData {
 
     /** A live tree keeps per-tree recipe resolutions separate from global defaults. */
     public static final class Tree {
+        private static final String ROOT_OUTPUT_CHOICE = "root-output";
         private final RecipeSnapshot rootRecipe;
-        private final ItemStack rootStack;
+        private ItemStack rootStack;
+        private boolean rootOutputExplicit;
         private final Map<String, RecipeRef> resolutions = new HashMap<>();
         private final Map<String, String> inputSelections = new HashMap<>();
         private Node root;
@@ -271,7 +282,7 @@ public final class RecipeTreeData {
 
         private Tree(RecipeSnapshot rootRecipe, ItemStack rootStack) {
             this.rootRecipe = rootRecipe;
-            this.rootStack = rootStack.copy();
+            this.rootStack = copyStack(rootStack);
             rebuild();
         }
 
@@ -322,6 +333,12 @@ public final class RecipeTreeData {
             boolean valid = node.alternatives.stream()
                 .anyMatch(stack -> ingredientKey(stack).equals(selectedKey));
             if (valid) {
+                if (ROOT_OUTPUT_CHOICE.equals(node.choiceKey)) {
+                    rootStack = copyStack(selected);
+                    rootOutputExplicit = true;
+                    rebuild();
+                    return;
+                }
                 inputSelections.put(node.choiceKey, selectedKey);
                 rebuild();
             }
@@ -329,6 +346,14 @@ public final class RecipeTreeData {
 
         public void clearInputSelection(Node node) {
             if (node != null && !node.choiceKey.isEmpty()) {
+                if (ROOT_OUTPUT_CHOICE.equals(node.choiceKey)) {
+                    rootStack = rootRecipe.outputs().isEmpty()
+                        ? ItemStack.EMPTY
+                        : copyStack(rootRecipe.outputs().get(0));
+                    rootOutputExplicit = false;
+                    rebuild();
+                    return;
+                }
                 inputSelections.remove(node.choiceKey);
                 rebuild();
             }
@@ -337,7 +362,15 @@ public final class RecipeTreeData {
         public void rebuild() {
             invalidateAnalysis();
             BuildContext context = new BuildContext();
-            root = new Node(rootStack, rootRecipe);
+            root = new Node(
+                rootStack,
+                rootRecipe,
+                rootRecipe.outputs(),
+                ROOT_OUTPUT_CHOICE,
+                "root",
+                List.of(),
+                rootOutputExplicit
+            );
             context.add();
             expand(root, context, new HashSet<>(), 0, "root");
         }
@@ -373,12 +406,12 @@ public final class RecipeTreeData {
                     ? missingCosts.get(entry.getKey()).amount
                     : (craftingMode ? 0 : total.amount);
                 long supplied = craftingMode ? Math.max(0, total.amount - missing) : 0;
-                costs.add(new Cost(total.stack.copy(), total.alternatives, total.amount, supplied));
+                costs.add(new Cost(copyStack(total.stack), total.alternatives, total.amount, supplied));
             }
 
             List<Cost> leftovers = totalRemainders.values().stream()
                 .filter(cost -> cost.amount > 0)
-                .map(cost -> new Cost(cost.stack.copy(), cost.alternatives, cost.amount, 0))
+                .map(cost -> new Cost(copyStack(cost.stack), cost.alternatives, cost.amount, 0))
                 .toList();
             cachedAnalysis = new Analysis(List.copyOf(costs), leftovers);
             cachedAnalysisRevision = analysisRevision;
@@ -533,20 +566,30 @@ public final class RecipeTreeData {
             if (selectedKey != null) {
                 for (ItemStack alternative : input.alternatives()) {
                     if (ingredientKey(alternative).equals(selectedKey)) {
-                        return new SelectedInput(alternative.copy(), true);
+                        return new SelectedInput(copyStack(alternative), true);
                     }
                 }
                 inputSelections.remove(choiceKey);
             }
             // Recursive candidate resolution is intentionally limited to the
             // active recipe-tree build. Ordinary JEI lookups must not trigger
-            // a whole-modpack dependency search.
-            return findCandidateWithSupply(
+            // a whole-modpack dependency search. A bookmarked ingredient is
+            // treated like another available inventory candidate: it does not
+            // override a real inventory/network match (or a recursively
+            // craftable alternative), but remains the fallback when no supply
+            // can be found. This keeps bookmark matching consistent with the
+            // player's inventory matching logic.
+            Optional<ItemStack> supplied = findCandidateWithSupply(
                 input.alternatives(),
                 true,
                 context.candidateContext,
-                context.candidateBudget
-            )
+                context.candidateBudget,
+                true
+            );
+            if (supplied.isPresent()) {
+                return new SelectedInput(supplied.get(), false);
+            }
+            return RecipeTreeFavorites.bookmarkedCandidate(input.alternatives())
                 .map(stack -> new SelectedInput(stack, false))
                 .orElseGet(() -> new SelectedInput(input.first(), false));
         }
@@ -557,7 +600,8 @@ public final class RecipeTreeData {
             boolean explicitResolution = resolutions.containsKey(key);
             RecipeRef preferred = explicitResolution
                 ? resolutions.get(key)
-                : RecipeTreeDefaults.getPreferredRecipe(target, candidates);
+                : RecipeTreeFavorites.bookmarkedRecipe(target, candidates)
+                    .orElseGet(() -> RecipeTreeDefaults.getPreferredRecipe(target, candidates));
             if (preferred != null) {
                 RecipeSnapshot snapshot = snapshot(preferred);
                 if (snapshot != null && snapshot.produces(key)) {
@@ -773,11 +817,11 @@ public final class RecipeTreeData {
         }
 
         private MutableCost(ItemStack stack, List<ItemStack> alternatives, long amount) {
-            this.stack = stack.copy();
+            this.stack = copyStack(stack);
             this.stack.setCount(1);
             this.alternatives = alternatives.stream()
                 .map(alternative -> {
-                    ItemStack copy = alternative.copy();
+                    ItemStack copy = copyStack(alternative);
                     copy.setCount(1);
                     return copy;
                 })
@@ -812,7 +856,7 @@ public final class RecipeTreeData {
 
         private MutableCraftStep(CraftStep source) {
             this.recipe = source.recipe();
-            this.stack = source.stack().copy();
+            this.stack = copyStack(source.stack());
             mergeAlternatives(source.alternatives());
             this.selectedInputs = source.selectedInputs();
             this.batches = source.batches();
@@ -832,18 +876,38 @@ public final class RecipeTreeData {
                 .collect(java.util.stream.Collectors.toSet());
             for (ItemStack candidate : candidates) {
                 if (existing.add(ingredientKey(candidate))) {
-                    alternatives.add(candidate.copy());
+                    alternatives.add(copyStack(candidate));
                 }
             }
         }
     }
 
     public static Optional<Tree> build(IRecipeLayoutDrawable<?> rootLayout) {
+        return build(rootLayout, null);
+    }
+
+    public static Optional<Tree> build(IRecipeLayoutDrawable<?> rootLayout, ItemStack selectedOutput) {
         Optional<RecipeSnapshot> root = snapshot(rootLayout);
         if (root.isEmpty() || root.get().outputs.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(new Tree(root.get(), root.get().outputs.get(0)));
+        RecipeSnapshot rootSnapshot = root.get();
+        ItemStack output = rootSnapshot.outputs.get(0);
+        if (selectedOutput != null && !selectedOutput.isEmpty()) {
+            String selectedKey = ingredientKey(selectedOutput);
+            output = rootSnapshot.outputs.stream()
+                .filter(candidate -> ingredientKey(candidate).equals(selectedKey))
+                .findFirst()
+                .orElse(output);
+        }
+        Optional<RecipeRef> bookmarked = RecipeTreeFavorites.bookmarkedRecipe(output, candidates(output));
+        if (bookmarked.isPresent()) {
+            RecipeSnapshot bookmarkedSnapshot = snapshot(bookmarked.get());
+            if (bookmarkedSnapshot != null && bookmarkedSnapshot.produces(ingredientKey(output))) {
+                rootSnapshot = bookmarkedSnapshot;
+            }
+        }
+        return Optional.of(new Tree(rootSnapshot, output));
     }
 
     public static boolean isSupported(IRecipeLayoutDrawable<?> layout) {
@@ -864,10 +928,10 @@ public final class RecipeTreeData {
         }
         return layout.getRecipeSlotsView().getSlotViews().stream()
             .filter(slot -> slot.getRole() == RecipeIngredientRole.OUTPUT)
-            .flatMap(IRecipeSlotView::getItemStacks)
+            .flatMap(slot -> displayedStacks(slot, false).stream())
             .filter(stack -> !stack.isEmpty())
             .findFirst()
-            .map(ItemStack::copy);
+            .map(RecipeTreeData::copyStack);
     }
 
     public static Optional<RecipeSnapshot> snapshot(IRecipeLayoutDrawable<?> layout) {
@@ -917,8 +981,10 @@ public final class RecipeTreeData {
         }
 
         IRecipeManager manager = runtime.getRecipeManager();
-        Optional<IFocus<ItemStack>> focus = createOutputFocus(runtime, target);
-        if (focus.isEmpty()) {
+        Optional<IFocus<net.minecraftforge.fluids.FluidStack>> fluidFocus = FluidRecipeCompat.createOutputFocus(runtime, target);
+        Optional<IFocus<ItemStack>> itemFocus = fluidFocus.isPresent() ? Optional.empty() : createOutputFocus(runtime, target);
+        IFocus<?> focus = fluidFocus.isPresent() ? fluidFocus.get() : itemFocus.orElse(null);
+        if (focus == null) {
             // Some third-party recipes expose placeholder or otherwise
             // invalid ItemStacks (for example Chisel's generated BlockItems).
             // JEI rejects those values when a focus is created. Treat them as
@@ -930,10 +996,10 @@ public final class RecipeTreeData {
 
         List<RecipeRef> result = new ArrayList<>();
         manager.createRecipeCategoryLookup()
-            .limitFocus(List.of(focus.get()))
+            .limitFocus(List.of(focus))
             .get()
             .filter(RecipeTreeData::isSupportedCategory)
-            .forEach(category -> addCandidates(manager, category, focus.get(), result));
+            .forEach(category -> addCandidates(manager, category, focus, result));
         List<RecipeRef> immutable = List.copyOf(result);
         CANDIDATE_CACHE.put(cacheKey, immutable);
         return immutable;
@@ -982,6 +1048,10 @@ public final class RecipeTreeData {
         if (stack == null || stack.isEmpty()) {
             return "minecraft:air";
         }
+        Optional<String> fluidKey = FluidRecipeCompat.fluidKey(stack);
+        if (fluidKey.isPresent()) {
+            return fluidKey.get();
+        }
         IJeiRuntime runtime = DirectoryRecipePlugin.getJeiRuntime();
         if (runtime != null) {
             try {
@@ -995,10 +1065,15 @@ public final class RecipeTreeData {
         return BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
     }
 
+    static String displayIngredientKey(ItemStack stack) {
+        return FluidRecipeCompat.fluidKey(stack).orElseGet(() -> ingredientKey(stack));
+    }
+
     public static void clearCaches() {
         CANDIDATE_CACHE.clear();
         SNAPSHOT_CACHE.clear();
         LAYOUT_CACHE.clear();
+        FluidRecipeCompat.clear();
         cachedCandidateContext = null;
         cachedCandidateMenu = null;
         cachedCandidateGameTime = Long.MIN_VALUE;
@@ -1009,7 +1084,7 @@ public final class RecipeTreeData {
     private static void addCandidates(
         IRecipeManager manager,
         IRecipeCategory<?> category,
-        IFocus<ItemStack> focus,
+        IFocus<?> focus,
         List<RecipeRef> result
     ) {
         RecipeType type = category.getRecipeType();
@@ -1030,10 +1105,7 @@ public final class RecipeTreeData {
                 continue;
             }
             int inputSlotIndex = role == RecipeIngredientRole.INPUT ? inputSlotCount++ : -1;
-            List<ItemStack> alternatives = slot.getItemStacks()
-                .filter(item -> !item.isEmpty())
-                .map(ItemStack::copy)
-                .toList();
+            List<ItemStack> alternatives = displayedStacks(slot, role == RecipeIngredientRole.INPUT);
             if (alternatives.isEmpty()) {
                 continue;
             }
@@ -1055,13 +1127,56 @@ public final class RecipeTreeData {
                     group.merge(uniqueAlternatives, inputSlotIndex);
                 }
             } else {
-                merge(outputs, alternatives.get(0));
+                for (ItemStack alternative : alternatives) {
+                    merge(outputs, alternative);
+                }
             }
         }
         List<RecipeInput> inputs = groupedInputs.values().stream()
             .map(MutableRecipeInput::freeze)
             .toList();
         return new RecipeSnapshot(ref, inputs, inputSlotCount, List.copyOf(outputs.values()));
+    }
+
+    private static List<ItemStack> displayedStacks(IRecipeSlotView slot, boolean input) {
+        Map<String, ItemStack> unique = new LinkedHashMap<>();
+        slot.getItemStacks()
+            .filter(item -> !item.isEmpty())
+            .map(FluidRecipeCompat::copyWithDisplay)
+            .forEach(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
+        slot.getAllIngredients()
+            // A tag/directory slot can expose only its first display stack via
+            // getItemStacks(). Read the complete typed ingredient stream as
+            // well so recursive candidate matching sees every member (for
+            // example spruce logs when oak planks are listed first).
+            .flatMap(ingredient -> ingredient.getIngredient(VanillaTypes.ITEM_STACK).stream())
+            .filter(item -> !item.isEmpty())
+            .map(FluidRecipeCompat::copyWithDisplay)
+            .forEach(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
+        slot.getAllIngredients()
+            .flatMap(ingredient -> FluidRecipeCompat.representativeContainer(ingredient).stream())
+            .map(FluidRecipeCompat::copyWithDisplay)
+            .forEach(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
+        if (input && unique.isEmpty()) {
+            var player = net.minecraft.client.Minecraft.getInstance().player;
+            if (player != null) {
+                slot.getAllIngredients()
+                    .flatMap(ingredient -> FluidRecipeCompat.matchingContainers(player, ingredient).stream())
+                    .map(FluidRecipeCompat::copyWithDisplay)
+                    .forEach(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
+            }
+        }
+        return List.copyOf(unique.values());
+    }
+
+    /**
+     * Returns every concrete item candidate exposed by a recipe input slot.
+     * Transfer code must use the same expansion as tree construction; using
+     * only {@link IRecipeSlotView#getItemStacks()} can leave a tag's first
+     * (usually oak) entry as the accidental default.
+     */
+    static List<ItemStack> candidateStacks(IRecipeSlotView slot) {
+        return slot == null ? List.of() : displayedStacks(slot, true);
     }
 
     private static final class MutableRecipeInput {
@@ -1078,7 +1193,7 @@ public final class RecipeTreeData {
                 String key = ingredientKey(addition);
                 ItemStack current = alternatives.get(key);
                 if (current == null) {
-                    alternatives.put(key, addition.copy());
+                    alternatives.put(key, copyStack(addition));
                 } else {
                     current.setCount(current.getCount() + addition.getCount());
                 }
@@ -1094,7 +1209,7 @@ public final class RecipeTreeData {
         String key = ingredientKey(stack);
         ItemStack existing = destination.get(key);
         if (existing == null) {
-            destination.put(key, stack.copy());
+            destination.put(key, copyStack(stack));
         } else {
             existing.setCount(existing.getCount() + stack.getCount());
         }
@@ -1177,7 +1292,8 @@ public final class RecipeTreeData {
             candidates,
             recursive,
             candidateContext(),
-            new CandidateSearchBudget()
+            new CandidateSearchBudget(),
+            false
         );
     }
 
@@ -1185,14 +1301,15 @@ public final class RecipeTreeData {
         Collection<ItemStack> candidates,
         boolean recursive,
         CandidateContext context,
-        CandidateSearchBudget budget
+        CandidateSearchBudget budget,
+        boolean includeBookmarkedSupply
     ) {
         if (candidates == null || candidates.isEmpty()) {
             return Optional.empty();
         }
         List<ItemStack> valid = candidates.stream()
             .filter(stack -> stack != null && !stack.isEmpty())
-            .map(ItemStack::copy)
+            .map(RecipeTreeData::copyStack)
             .toList();
         if (valid.isEmpty()) {
             return Optional.empty();
@@ -1202,7 +1319,7 @@ public final class RecipeTreeData {
         Map<String, Long> available = resolvedContext.available;
         for (ItemStack candidate : valid) {
             if (availableAmount(available, ingredientKey(candidate)) > 0) {
-                return Optional.of(candidate.copy());
+                return Optional.of(copyStack(candidate));
             }
         }
         if (!recursive) {
@@ -1211,10 +1328,21 @@ public final class RecipeTreeData {
 
         Map<String, List<RecipeSnapshot>> recipeCache = resolvedContext.recipeCache;
         CandidateSearchBudget searchBudget = budget == null ? new CandidateSearchBudget() : budget;
+        Set<String> bookmarkedKeys = includeBookmarkedSupply
+            ? RecipeTreeFavorites.bookmarkedIngredientKeys()
+            : Set.of();
         for (ItemStack candidate : valid) {
             Map<String, Long> trial = new LinkedHashMap<>(available);
-            if (canSupplyCandidate(candidate, trial, new HashSet<>(), 0, recipeCache, searchBudget)) {
-                return Optional.of(candidate.copy());
+            if (canSupplyCandidate(
+                candidate,
+                trial,
+                new HashSet<>(),
+                0,
+                recipeCache,
+                searchBudget,
+                bookmarkedKeys
+            )) {
+                return Optional.of(copyStack(candidate));
             }
             if (searchBudget.exhausted()) {
                 break;
@@ -1250,7 +1378,8 @@ public final class RecipeTreeData {
         Set<String> active,
         int depth,
         Map<String, List<RecipeSnapshot>> recipeCache,
-        CandidateSearchBudget budget
+        CandidateSearchBudget budget,
+        Set<String> bookmarkedKeys
     ) {
         if (budget == null || !budget.visit()) {
             return false;
@@ -1259,6 +1388,13 @@ public final class RecipeTreeData {
             return true;
         }
         String key = ingredientKey(wanted);
+        // Bookmarks participate only in candidate resolution.  They are not
+        // added to the inventory map, so they still appear as missing costs;
+        // this merely lets recursive matching follow a bookmarked log through
+        // its plank/stick/etc. recipes in the same way as an owned item.
+        if (bookmarkedKeys != null && bookmarkedKeys.contains(key)) {
+            return true;
+        }
         long required = Math.max(1L, wanted.getCount());
         long present = availableAmount(available, key);
         if (present >= required) {
@@ -1305,7 +1441,8 @@ public final class RecipeTreeData {
                         new HashSet<>(active),
                         depth + 1,
                         recipeCache,
-                        budget
+                        budget,
+                        bookmarkedKeys
                     )) {
                         branch = inputBranch;
                         alternativeAvailable = true;
@@ -1338,7 +1475,7 @@ public final class RecipeTreeData {
     }
 
     private static ItemStack copyWithCount(ItemStack source, long count) {
-        ItemStack copy = source.copy();
+        ItemStack copy = copyStack(source);
         copy.setCount((int) Math.min(Integer.MAX_VALUE, Math.max(1L, count)));
         return copy;
     }

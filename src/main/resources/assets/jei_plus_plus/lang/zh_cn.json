@@ -69,6 +69,7 @@
   "jei_plus_plus.recipe_tree.mode.view": "正在查看配方树",
   "jei_plus_plus.recipe_tree.mode.craft": "制作模式：根据背包高亮制作进度",
   "jei_plus_plus.recipe_tree.input_choice": "%s 种可用输入；点击 + 在配方树内选择",
+  "jei_plus_plus.recipe_tree.output_choice": "%s 种可用产物；点击 + 选择目标产物",
   "jei_plus_plus.recipe_tree.input_choice.selected": "已固定输入（共 %s 种）；左键更换，右键恢复自动选择",
   "jei_plus_plus.recipe_tree.input_choice.title": "选择固定材料（%s 种）",
   "jei_plus_plus.recipe_tree.favorite.remaining": "尚需：%s",
@@ -76,6 +77,7 @@
   "jei_plus_plus.recipe_tree.favorite.click": "左键：放入制作设定数量所需的材料",
   "jei_plus_plus.recipe_tree.favorite.click_intermediate": "左键：放入直接材料",
   "jei_plus_plus.recipe_tree.favorite.control_click": "Ctrl+左键：自动合成",
+  "jei_plus_plus.recipe_tree.favorite.fluid_amount": "流体量：%s",
   "jei_plus_plus.recipe_tree.help": "配方树会显示制作流程、总耗材和副产物；总耗材与副产物以最上方最终产物为中心对齐。\n\n左键点击物品可选择配方；Shift+左键会根据背包自动选择；左键点击配方分类图标会打开当前配方。多输入节点右上角的 + 会在配方树内打开材料选择小窗。相同的重复输入槽会合并，固定一种候选材料后会用于全部合并槽位；没有固定时，所有候选都会参与库存、高亮和转移判断，递归制作会优先选择下级原料可用的候选。\n\n右键折叠节点；Shift+右键清除该节点在本树中的配方。选择配方时，再点当前配方的树按钮也可取消。\n\n制作模式会高亮基础材料；书签栏用红色表示尚缺的基础材料、橙色表示尚缺的中间产物。即使物品已经备齐，产物和材料仍会保留在 JEI 书签栏。左键点击中间产物只放入直接材料；Ctrl+点击只递归制作当前缺失的步骤。耗时机器只放入材料。\n\n滚轮缩放，拖动平移；在 xN 上滚动可调整份数，点击会选取副产物最少的份数。E、Esc 或再次点击配方树按钮可返回；右键配方树按钮或按 Ctrl+C 可清空，R 重新居中。",
   "jei_plus_plus.recipe_tree.controls": "左键：选择配方   右键：折叠   滚轮：缩放   拖动：移动"
 }

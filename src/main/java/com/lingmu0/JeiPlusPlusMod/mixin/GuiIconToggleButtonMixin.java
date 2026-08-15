@@ -1,5 +1,6 @@
 package com.lingmu0.JeiPlusPlusMod.mixin;
 
+import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
 import mezz.jei.common.util.ImmutableRect2i;
 import mezz.jei.gui.elements.GuiIconButton;
 import mezz.jei.gui.elements.GuiIconToggleButton;
@@ -45,6 +46,7 @@ public abstract class GuiIconToggleButtonMixin {
     }
 
     private boolean jeiPlusPlus$isRecipeBookmark() {
-        return (Object) this instanceof RecipeBookmarkButton;
+        return JeiPlusPlusConfig.HIDE_RECIPE_BOOKMARK_BUTTON.get()
+            && (Object) this instanceof RecipeBookmarkButton;
     }
 }

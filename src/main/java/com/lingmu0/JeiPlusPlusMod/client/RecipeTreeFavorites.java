@@ -15,6 +15,7 @@ import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.api.runtime.IRecipesGui;
 import mezz.jei.common.gui.JeiTooltip;
 import mezz.jei.common.input.IInternalKeyMappings;
+import mezz.jei.common.Internal;
 import mezz.jei.common.platform.Services;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
@@ -32,7 +33,10 @@ import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.lang.reflect.InvocationHandler;
@@ -50,6 +54,26 @@ public final class RecipeTreeFavorites {
     private static String signature = "";
     private static long lastRefreshNanos = Long.MIN_VALUE;
     private static Object lastRefreshMenu;
+    private static int layoutNativeBookmarkCount = -1;
+    private static int layoutBookmarkColumns = -1;
+    private static boolean synchronizingNativeBookmarkLayout;
+    @SuppressWarnings("unchecked")
+    /** Structural ingredient used only by the row-aware JEI renderer. */
+    private static final ITypedIngredient<ItemStack> ROW_BREAK_INGREDIENT =
+        (ITypedIngredient<ItemStack>) Proxy.newProxyInstance(
+            ITypedIngredient.class.getClassLoader(),
+            new Class<?>[]{ITypedIngredient.class},
+            (proxy, method, arguments) -> switch (method.getName()) {
+                case "getType" -> VanillaTypes.ITEM_STACK;
+                case "getIngredient" -> ItemStack.EMPTY;
+                case "getItemStack" -> Optional.empty();
+                case "cast", "castToItemStackType" -> proxy;
+                default -> method.getReturnType() == boolean.class ? false : null;
+            }
+        );
+
+    private static final Set<IElement<?>> ROW_BREAKS =
+        Collections.newSetFromMap(new IdentityHashMap<>());
 
     private RecipeTreeFavorites() {
     }
@@ -58,13 +82,166 @@ public final class RecipeTreeFavorites {
         bookmarkList = list;
     }
 
+    /** Binds lazily when a tree is opened before JEI has drawn its overlay. */
+    private static void ensureBound() {
+        if (bookmarkList != null) {
+            return;
+        }
+        try {
+            Object overlay = Internal.getJeiRuntime().getBookmarkOverlay();
+            Class<?> type = overlay == null ? null : overlay.getClass();
+            while (type != null) {
+                try {
+                    java.lang.reflect.Field field = type.getDeclaredField("bookmarkList");
+                    field.setAccessible(true);
+                    Object value = field.get(overlay);
+                    if (value instanceof BookmarkList list) {
+                        bookmarkList = list;
+                        return;
+                    }
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    type = type.getSuperclass();
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // JEI may still be constructing its runtime during a reload.
+        }
+    }
+
+    /** Returns the player's bookmarked recipe for this output, if any. */
+    public static Optional<RecipeTreeData.RecipeRef> bookmarkedRecipe(
+        ItemStack output,
+        List<RecipeTreeData.RecipeRef> candidates
+    ) {
+        ensureBound();
+        if (bookmarkList == null || output == null || output.isEmpty() || candidates == null || candidates.isEmpty()) {
+            return Optional.empty();
+        }
+        String outputKey = RecipeTreeData.ingredientKey(output);
+        for (IElement<?> element : bookmarkList.getElements()) {
+            Optional<IBookmark> bookmark = element.getBookmark();
+            if (bookmark.isEmpty() || !isRecipeBookmark(bookmark.get())) {
+                continue;
+            }
+            if (!outputKey.equals(typedIngredientKey(element.getTypedIngredient()))) {
+                continue;
+            }
+            Object category = invokeNoArg(bookmark.get(), "getRecipeCategory");
+            Object recipe = invokeNoArg(bookmark.get(), "getRecipe");
+            if (category == null || recipe == null) {
+                continue;
+            }
+            for (RecipeTreeData.RecipeRef candidate : candidates) {
+                if (candidate.category() == category && Objects.equals(candidate.recipe(), recipe)) {
+                    return Optional.of(candidate);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** Returns a bookmarked ingredient that is one of the supplied alternatives. */
+    public static Optional<ItemStack> bookmarkedCandidate(List<ItemStack> alternatives) {
+        ensureBound();
+        if (bookmarkList == null || alternatives == null || alternatives.isEmpty()) {
+            return Optional.empty();
+        }
+        Set<String> candidateKeys = alternatives.stream()
+            .filter(stack -> stack != null && !stack.isEmpty())
+            .map(RecipeTreeData::ingredientKey)
+            .collect(java.util.stream.Collectors.toSet());
+        for (IElement<?> element : bookmarkList.getElements()) {
+            Optional<IBookmark> bookmark = element.getBookmark();
+            if (bookmark.isEmpty()
+                || (!isIngredientBookmark(bookmark.get()) && !isRecipeBookmark(bookmark.get()))) {
+                continue;
+            }
+            String bookmarkedKey = typedIngredientKey(element.getTypedIngredient());
+            if (bookmarkedKey.isEmpty() || !candidateKeys.contains(bookmarkedKey)) {
+                continue;
+            }
+            for (ItemStack alternative : alternatives) {
+                if (RecipeTreeData.ingredientKey(alternative).equals(bookmarkedKey)
+                    || FluidRecipeCompat.fluidKey(alternative).map(bookmarkedKey::equals).orElse(false)) {
+                    return Optional.of(FluidRecipeCompat.copyWithDisplay(alternative));
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Returns the ingredient keys bookmarked by the player.  Recipe-tree
+     * candidate resolution uses these keys as virtual terminal materials when
+     * it performs its recursive availability check.  A bookmark is only a
+     * preference signal (it is not counted as inventory), but treating it as a
+     * recursive leaf makes a bookmarked spruce log select spruce planks just
+     * like an actual spruce log in the player's inventory would.
+     */
+    public static Set<String> bookmarkedIngredientKeys() {
+        ensureBound();
+        if (bookmarkList == null) {
+            return Set.of();
+        }
+        Set<String> keys = new HashSet<>();
+        for (IElement<?> element : bookmarkList.getElements()) {
+            Optional<IBookmark> bookmark = element.getBookmark();
+            if (bookmark.isEmpty() || !isIngredientBookmark(bookmark.get())) {
+                continue;
+            }
+            String key = typedIngredientKey(element.getTypedIngredient());
+            if (!key.isEmpty()) {
+                keys.add(key);
+            }
+        }
+        return Set.copyOf(keys);
+    }
+
+    private static boolean isIngredientBookmark(IBookmark bookmark) {
+        return bookmark.getClass().getName().endsWith("IngredientBookmark");
+    }
+
+    private static boolean isRecipeBookmark(IBookmark bookmark) {
+        return bookmark.getClass().getName().endsWith("RecipeBookmark");
+    }
+
+    private static Object invokeNoArg(Object value, String methodName) {
+        try {
+            return value.getClass().getMethod(methodName).invoke(value);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static String typedIngredientKey(ITypedIngredient<?> typed) {
+        if (typed == null) {
+            return "";
+        }
+        Optional<ItemStack> item = typed.getIngredient(VanillaTypes.ITEM_STACK);
+        if (item.isPresent() && !item.get().isEmpty()) {
+            return RecipeTreeData.ingredientKey(item.get());
+        }
+        return FluidRecipeCompat.fluid(typed)
+            .map(value -> "fluid:" + net.minecraft.core.registries.BuiltInRegistries.FLUID.getKey(value.getFluid()))
+            .orElse("");
+    }
+
     public static List<IElement<?>> elements() {
         return elements;
     }
 
     public static boolean isActive() {
         RecipeTreeData.Tree tree = RecipeTreeSession.craftingTree();
-        return tree != null && tree.craftingMode() && !elements.isEmpty();
+        // The overlay asks whether it has room before its first draw pass.
+        // Refresh lazily here so a newly opened crafting tree cannot be
+        // classified as an empty bookmark list for that pass.
+        if (tree != null && tree.craftingMode() && elements.isEmpty()) {
+            refreshThrottled();
+        }
+        // Native JEI bookmarks must remain visible even when the current tree
+        // has no synthetic cost/product entry yet (for example while a new
+        // tree is rebuilding or when every requirement is already supplied).
+        return tree != null && tree.craftingMode();
     }
 
     public static boolean isRequired(ItemStack stack) {
@@ -116,16 +293,53 @@ public final class RecipeTreeFavorites {
         refreshNow();
     }
 
+    /**
+     * JEI mutates its native bookmark list before notifying its layout
+     * listeners. Rebuild our row padding at that exact point so the first
+     * listener pass already sees the final positions instead of rendering one
+     * frame with padding calculated for the previous bookmark count.
+     */
+    public static void refreshBeforeBookmarkListNotification() {
+        RecipeTreeData.Tree tree = RecipeTreeSession.craftingTree();
+        if (synchronizingNativeBookmarkLayout
+            || bookmarkList == null
+            || tree == null
+            || !tree.craftingMode()) {
+            return;
+        }
+        int columns = bookmarkColumns();
+        int nativeBookmarks = nativeBookmarkCount();
+        if (columns == layoutBookmarkColumns && nativeBookmarks == layoutNativeBookmarkCount) {
+            return;
+        }
+        synchronizingNativeBookmarkLayout = true;
+        try {
+            refreshNow();
+        } finally {
+            synchronizingNativeBookmarkLayout = false;
+        }
+    }
+
     public static void refreshNow() {
         lastRefreshNanos = System.nanoTime();
         lastRefreshMenu = Ae2StorageIntegration.activeMenu();
         RecipeTreeData.Tree tree = RecipeTreeSession.craftingTree();
         IJeiRuntime runtime = DirectoryRecipePlugin.getJeiRuntime();
-        List<IElement<?>> next = new ArrayList<>();
+        List<IElement<?>> finalProducts = new ArrayList<>();
+        List<IElement<?>> intermediateProducts = new ArrayList<>();
+        List<IElement<?>> rawMaterials = new ArrayList<>();
         Set<String> nextRequired = new HashSet<>();
         Set<String> nextIntermediate = new HashSet<>();
         StringBuilder nextSignature = new StringBuilder();
+        int columns = bookmarkColumns();
+        int nativeBookmarks = 0;
         if (tree != null && tree.craftingMode() && runtime != null) {
+            nativeBookmarks = nativeBookmarkCount();
+            // Native JEI bookmarks are prepended to the synthetic tree rows.
+            // Their count is therefore part of the layout state: when one is
+            // added or removed, the leading padding must be rebuilt and JEI
+            // must be told to lay the list out again.
+            nextSignature.append('L').append(columns).append(':').append(nativeBookmarks).append(';');
             String rootKey = tree.root().ingredientKey();
             for (RecipeTreeData.CraftStep step : tree.craftingSteps()) {
                 String stepKey = RecipeTreeData.ingredientKey(step.stack());
@@ -137,7 +351,11 @@ public final class RecipeTreeFavorites {
                 }
                 createTyped(runtime, step.stack()).ifPresent(typed -> {
                     SyntheticBookmark bookmark = new SyntheticBookmark(typed, step, null, !stepKey.equals(rootKey));
-                    next.add(bookmark.getElement());
+                     if (stepKey.equals(rootKey)) {
+                         finalProducts.add(bookmark.getElement());
+                     } else {
+                         intermediateProducts.add(bookmark.getElement());
+                     }
                     nextSignature.append('R').append(step.recipe().key())
                         .append(':').append(owned).append(':').append(step.total())
                         .append(':').append(step.alternatives().stream()
@@ -153,13 +371,19 @@ public final class RecipeTreeFavorites {
                 }
                 createTyped(runtime, cost.stack()).ifPresent(typed -> {
                     SyntheticBookmark bookmark = new SyntheticBookmark(typed, null, cost, false);
-                    next.add(bookmark.getElement());
+                     rawMaterials.add(bookmark.getElement());
                     nextSignature.append('C').append(cost.alternatives().stream()
                             .map(RecipeTreeData::ingredientKey).sorted().toList())
                         .append(':').append(owned).append(':').append(cost.required()).append(';');
                 });
             }
         }
+        List<IElement<?>> next = new ArrayList<>();
+        ROW_BREAKS.clear();
+        int cursor = nativeBookmarks;
+        cursor = appendGroup(next, finalProducts, columns, cursor);
+        cursor = appendGroup(next, intermediateProducts, columns, cursor);
+        appendGroup(next, rawMaterials, columns, cursor);
         String newSignature = nextSignature.toString();
         boolean changed = !newSignature.equals(signature);
         elements = List.copyOf(next);
@@ -168,16 +392,103 @@ public final class RecipeTreeFavorites {
         Set<String> highlightedAeKeys = new HashSet<>(nextRequired);
         highlightedAeKeys.addAll(nextIntermediate);
         StorageNetworkIntegration.prioritizeVisibleEntries(highlightedAeKeys);
+        layoutNativeBookmarkCount = tree != null && tree.craftingMode() && runtime != null
+            ? nativeBookmarks
+            : -1;
+        layoutBookmarkColumns = tree != null && tree.craftingMode() && runtime != null
+            ? columns
+            : -1;
         signature = newSignature;
-        if (changed && bookmarkList != null) {
+        if (changed && bookmarkList != null && !synchronizingNativeBookmarkLayout) {
             ((BookmarkListAccessor) (Object) bookmarkList).jeiPlusPlus$notifyListenersOfChange();
         }
     }
 
-    private static Optional<ITypedIngredient<ItemStack>> createTyped(IJeiRuntime runtime, ItemStack source) {
-        ItemStack stack = source.copy();
+    private static int appendGroup(List<IElement<?>> destination, List<IElement<?>> group, int columns, int currentCount) {
+        if (group.isEmpty()) {
+            return currentCount;
+        }
+        int padding = (columns - (currentCount % columns)) % columns;
+        for (int i = 0; i < padding; i++) {
+            destination.add(createRowBreak());
+        }
+        destination.addAll(group);
+        int remainder = group.size() % columns;
+        if (remainder != 0) {
+            for (int i = remainder; i < columns; i++) {
+                destination.add(createRowBreak());
+            }
+        }
+        return currentCount + padding + group.size() + ((columns - remainder) % columns);
+    }
+
+    private static int nativeBookmarkCount() {
+        if (bookmarkList == null) {
+            return 0;
+        }
+        int count = 0;
+        for (IElement<?> element : bookmarkList.getElements()) {
+            Optional<IBookmark> bookmark = element.getBookmark();
+            if (bookmark.isPresent() && !bookmark.get().getClass().getName().contains("SyntheticBookmark")) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int bookmarkColumns() {
+        int fallback = 9;
+        try {
+            Object config = Internal.getJeiClientConfigs().getBookmarkListConfig();
+            Object value;
+            try {
+                value = config.getClass().getMethod("getMaxColumns").invoke(config);
+            } catch (ReflectiveOperationException ignored) {
+                value = config.getClass().getMethod("maxColumns").invoke(config);
+                try {
+                    value = value.getClass().getMethod("getValue").invoke(value);
+                } catch (ReflectiveOperationException ignoredValue) {
+                    // 15.x returns the integer directly from getMaxColumns.
+                }
+            }
+            if (value instanceof Number number) {
+                return Math.max(1, number.intValue());
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // JEI's config API is internal and differs between supported lines.
+        }
+        return fallback;
+    }
+
+    private static IElement<?> createRowBreak() {
+        IElement<?> element = (IElement<?>) Proxy.newProxyInstance(
+            IElement.class.getClassLoader(),
+            new Class<?>[]{IElement.class},
+            (proxy, method, arguments) -> switch (method.getName()) {
+                case "getTypedIngredient" -> ROW_BREAK_INGREDIENT;
+                case "getBookmark" -> Optional.empty();
+                case "createRenderOverlay", "show", "getTooltip", "tick" -> null;
+                case "isVisible" -> false;
+                case "handleClick" -> false;
+                case "equals" -> proxy == (arguments == null ? null : arguments[0]);
+                case "hashCode" -> System.identityHashCode(proxy);
+                case "toString" -> "JEI++ recipe-tree row spacer";
+                default -> method.getReturnType() == boolean.class ? false : null;
+            }
+        );
+        ROW_BREAKS.add(element);
+        return element;
+    }
+
+    /** Returns true for the structural row markers used by this tree list. */
+    public static boolean isRowBreak(Object element) {
+        return element instanceof IElement<?> value && ROW_BREAKS.contains(value);
+    }
+
+    private static Optional<ITypedIngredient<?>> createTyped(IJeiRuntime runtime, ItemStack source) {
+        ItemStack stack = FluidRecipeCompat.copyWithDisplay(source);
         stack.setCount(1);
-        return runtime.getIngredientManager().createTypedIngredient(VanillaTypes.ITEM_STACK, stack);
+        return FluidRecipeCompat.toTyped(runtime.getIngredientManager(), stack);
     }
 
     private static String amount(long value) {
@@ -191,7 +502,7 @@ public final class RecipeTreeFavorites {
         private final IElement<?> element;
 
         private SyntheticBookmark(
-            ITypedIngredient<ItemStack> typed,
+            ITypedIngredient<?> typed,
             RecipeTreeData.CraftStep step,
             RecipeTreeData.Cost cost,
             boolean intermediate
@@ -207,14 +518,14 @@ public final class RecipeTreeFavorites {
     /** Runtime bridge for JEI 15.19-15.48 IElement API changes. */
     private static final class SyntheticElement implements InvocationHandler {
         private final IBookmark bookmark;
-        private final ITypedIngredient<ItemStack> typed;
+        private final ITypedIngredient<?> typed;
         private final RecipeTreeData.CraftStep step;
         private final RecipeTreeData.Cost cost;
         private final boolean intermediate;
 
         private SyntheticElement(
             IBookmark bookmark,
-            ITypedIngredient<ItemStack> typed,
+            ITypedIngredient<?> typed,
             RecipeTreeData.CraftStep step,
             RecipeTreeData.Cost cost,
             boolean intermediate
@@ -228,7 +539,7 @@ public final class RecipeTreeFavorites {
 
         private static IElement<?> create(
             IBookmark bookmark,
-            ITypedIngredient<ItemStack> typed,
+            ITypedIngredient<?> typed,
             RecipeTreeData.CraftStep step,
             RecipeTreeData.Cost cost,
             boolean intermediate
@@ -245,14 +556,39 @@ public final class RecipeTreeFavorites {
             int color = step == null
                 ? (remaining == 0 ? 0xFF55FF55 : 0xFFFF5555)
                 : (remaining == 0 ? 0xFF55FF55 : (intermediate ? 0xFFFFAA33 : 0xFF55CCFF));
-            return new AmountOverlay(remaining, color);
+            return new AmountOverlay(quantityText(remaining), color);
         }
 
         @SuppressWarnings({"rawtypes", "unchecked"})
         private void show(IRecipesGui recipesGui, FocusUtil focusUtil, List<RecipeIngredientRole> roles) {
             if (step != null) {
                 IRecipeCategory category = step.recipe().category();
-                recipesGui.showRecipes(category, List.of(step.recipe().recipe()), List.<IFocus<?>>of());
+                if (!roles.isEmpty() && !roles.contains(RecipeIngredientRole.OUTPUT)) {
+                    recipesGui.show(focusUtil.createFocuses(typed, roles));
+                    return;
+                }
+                List<IFocus<?>> focuses = focusUtil.createFocuses(
+                    typed,
+                    List.of(RecipeIngredientRole.OUTPUT)
+                );
+                IJeiRuntime runtime = DirectoryRecipePlugin.getJeiRuntime();
+                if (runtime == null) {
+                    recipesGui.showRecipes(category, List.of(step.recipe().recipe()), focuses);
+                    return;
+                }
+                @SuppressWarnings({"rawtypes", "unchecked"})
+                List recipes = runtime.getRecipeManager()
+                    .createRecipeLookup(category.getRecipeType())
+                    .limitFocus(focuses)
+                    .get()
+                    .toList();
+                @SuppressWarnings({"rawtypes", "unchecked"})
+                List ordered = new ArrayList(recipes.size() + 1);
+                ordered.add(step.recipe().recipe());
+                recipes.stream()
+                    .filter(recipe -> !Objects.equals(recipe, step.recipe().recipe()))
+                    .forEach(ordered::add);
+                recipesGui.showRecipes(category, ordered, focuses);
                 return;
             }
             recipesGui.show(focusUtil.createFocuses(typed, roles));
@@ -277,26 +613,40 @@ public final class RecipeTreeFavorites {
             return true;
         }
 
-        @SuppressWarnings("unchecked")
         private void getTooltip(JeiTooltip tooltip, Object tooltipHelper, Object renderer, Object helper) throws Throwable {
-            IIngredientRenderer<ItemStack> ingredientRenderer = (IIngredientRenderer<ItemStack>) renderer;
-            IIngredientHelper<ItemStack> ingredientHelper = (IIngredientHelper<ItemStack>) helper;
+            @SuppressWarnings("rawtypes")
+            IIngredientRenderer ingredientRenderer = (IIngredientRenderer) renderer;
+            @SuppressWarnings("rawtypes")
+            IIngredientHelper ingredientHelper = (IIngredientHelper) helper;
             invokeIngredientTooltipHelper(tooltipHelper, tooltip, ingredientRenderer, ingredientHelper);
-            List<ItemStack> alternatives = tooltipAlternatives();
-            if (alternatives.size() > 1) {
-                ingredientHelper.getTagKeyEquivalent(alternatives).ifPresent(tagKey -> {
-                    tooltip.add(Component.translatable("jei.tooltip.recipe.tag", "")
-                        .withStyle(ChatFormatting.GRAY));
-                    tooltip.add(Services.PLATFORM.getRenderHelper().getName(tagKey)
-                        .copy().withStyle(ChatFormatting.GRAY));
-                });
-                tooltip.add(new TagContentTooltipComponent<>(ingredientRenderer, alternatives));
+            if (FluidRecipeCompat.fluid(typed).isPresent()) {
+                FluidRecipeCompat.fluid(typed).ifPresent(value -> tooltip.add(
+                    Component.translatable(
+                        "jei_plus_plus.recipe_tree.favorite.fluid_amount",
+                        FluidRecipeCompat.formatAmount(value.getAmount())
+                    ).withStyle(ChatFormatting.GRAY)
+                ));
+            } else {
+                @SuppressWarnings("unchecked")
+                IIngredientHelper<ItemStack> itemHelper = (IIngredientHelper<ItemStack>) ingredientHelper;
+                @SuppressWarnings("unchecked")
+                IIngredientRenderer<ItemStack> itemRenderer = (IIngredientRenderer<ItemStack>) ingredientRenderer;
+                List<ItemStack> alternatives = tooltipAlternatives();
+                if (alternatives.size() > 1) {
+                    itemHelper.getTagKeyEquivalent(alternatives).ifPresent(tagKey -> {
+                        tooltip.add(Component.translatable("jei.tooltip.recipe.tag", "")
+                            .withStyle(ChatFormatting.GRAY));
+                        tooltip.add(Services.PLATFORM.getRenderHelper().getName(tagKey)
+                            .copy().withStyle(ChatFormatting.GRAY));
+                    });
+                    tooltip.add(new TagContentTooltipComponent<>(itemRenderer, alternatives));
+                }
             }
             long owned = owned();
             long total = total();
             long remaining = Math.max(0, total - owned);
-            tooltip.add(Component.translatable("jei_plus_plus.recipe_tree.favorite.remaining", amount(remaining)).withStyle(ChatFormatting.GRAY));
-            tooltip.add(Component.translatable("jei_plus_plus.recipe_tree.favorite.obtained", amount(owned), amount(total)).withStyle(ChatFormatting.GRAY));
+            tooltip.add(Component.translatable("jei_plus_plus.recipe_tree.favorite.remaining", quantityText(remaining)).withStyle(ChatFormatting.GRAY));
+            tooltip.add(Component.translatable("jei_plus_plus.recipe_tree.favorite.obtained", quantityText(owned), quantityText(total)).withStyle(ChatFormatting.GRAY));
             if (step != null) {
                 String clickKey = intermediate
                     ? "jei_plus_plus.recipe_tree.favorite.click_intermediate"
@@ -338,8 +688,8 @@ public final class RecipeTreeFavorites {
         private void invokeIngredientTooltipHelper(
             Object tooltipHelper,
             JeiTooltip tooltip,
-            IIngredientRenderer<ItemStack> ingredientRenderer,
-            IIngredientHelper<ItemStack> ingredientHelper
+            IIngredientRenderer ingredientRenderer,
+            IIngredientHelper ingredientHelper
         ) throws Throwable {
             Method target = null;
             for (Method method : tooltipHelper.getClass().getMethods()) {
@@ -360,7 +710,7 @@ public final class RecipeTreeFavorites {
 
         private List<ItemStack> tooltipAlternatives() {
             List<ItemStack> source = step == null
-                ? (cost == null ? List.of(typed.getIngredient()) : cost.alternatives())
+                ? (cost == null ? List.of() : cost.alternatives())
                 : step.alternatives();
             return source.stream()
                 .filter(stack -> stack != null && !stack.isEmpty())
@@ -370,6 +720,16 @@ public final class RecipeTreeFavorites {
                     return copy;
                 })
                 .toList();
+        }
+
+        private String quantityText(long units) {
+            ItemStack source = step == null
+                ? (cost == null ? ItemStack.EMPTY : cost.stack())
+                : step.stack();
+            if (!source.isEmpty() && FluidRecipeCompat.displayFluid(source).isPresent()) {
+                return FluidRecipeCompat.formatAmount(FluidRecipeCompat.amountForUnits(source, units));
+            }
+            return amount(units);
         }
 
         private long owned() {
@@ -384,18 +744,17 @@ public final class RecipeTreeFavorites {
 
     }
 
-    private record AmountOverlay(long value, int color) implements IDrawable {
+    private record AmountOverlay(String value, int color) implements IDrawable {
         @Override public int getWidth() { return 16; }
         @Override public int getHeight() { return 16; }
 
         @Override
         public void draw(GuiGraphics graphics, int xOffset, int yOffset) {
-            String text = amount(value);
             var font = Minecraft.getInstance().font;
             graphics.pose().pushPose();
             graphics.pose().translate(0, 0, 300);
             graphics.fill(xOffset, yOffset, xOffset + 2, yOffset + 2, color);
-            graphics.drawString(font, text, xOffset + 17 - font.width(text), yOffset + 9, color, true);
+            graphics.drawString(font, value, xOffset + 17 - font.width(value), yOffset + 9, color, true);
             graphics.pose().popPose();
         }
     }

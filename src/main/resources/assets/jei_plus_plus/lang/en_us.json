@@ -69,6 +69,7 @@
   "jei_plus_plus.recipe_tree.mode.view": "Viewing recipe tree",
   "jei_plus_plus.recipe_tree.mode.craft": "Crafting mode: inventory progress is highlighted",
   "jei_plus_plus.recipe_tree.input_choice": "%s valid inputs; click + to choose inside the tree",
+  "jei_plus_plus.recipe_tree.output_choice": "%s output variants; click + to choose the result",
   "jei_plus_plus.recipe_tree.input_choice.selected": "Input locked (out of %s); left-click to change, right-click for automatic choice",
   "jei_plus_plus.recipe_tree.input_choice.title": "Choose a fixed ingredient (%s)",
   "jei_plus_plus.recipe_tree.favorite.remaining": "Remaining: %s",
@@ -76,6 +77,7 @@
   "jei_plus_plus.recipe_tree.favorite.click": "Left-click: move the materials needed for the configured amount",
   "jei_plus_plus.recipe_tree.favorite.click_intermediate": "Left-click: move direct materials",
   "jei_plus_plus.recipe_tree.favorite.control_click": "Ctrl-left-click: Auto-craft",
+  "jei_plus_plus.recipe_tree.favorite.fluid_amount": "Fluid amount: %s",
   "jei_plus_plus.recipe_tree.help": "The recipe tree shows the process, total material cost, and leftovers; cost rows are centered under the final product.\n\nLeft-click an item to choose its recipe. Shift-left-click auto-selects from inventory. Left-click a category icon to open the active recipe. Use the + on a multi-input node to open the in-tree ingredient selector. Repeated identical slots are merged; locking an alternative applies it to every merged slot. Without a lock, every alternative participates in inventory, highlighting, and transfer checks, and recursive crafting prefers candidates whose lower-level materials are available.\n\nRight-click folds a node. Shift-right-click clears its per-tree recipe. While choosing a recipe, press the tree button on the current recipe again to clear it.\n\nCrafting mode highlights base materials. In bookmarks, missing base materials are red and missing intermediate products are orange. Products and costs stay visible even when already obtained. Left-clicking an intermediate transfers only its direct inputs; Ctrl-click recursively crafts only the currently missing steps. Timed machines only receive materials.\n\nScroll to zoom and drag to move. Scroll the xN label to change batch size; click it for minimal leftovers. E, Escape, or the tree button returns. Right-click the tree button or press Ctrl+C to clear the tree; R recenters it.",
   "jei_plus_plus.recipe_tree.controls": "Left click: choose recipe   Right click: fold   Wheel: zoom   Drag: move"
 }
