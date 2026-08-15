@@ -611,7 +611,7 @@ public final class RecipeTreeTransfer {
         }
 
         IRecipeSlotsView slots = adjustInputs(
-            layout.getRecipeSlotsView(), selectedInputs, batches, recursiveCandidates
+            layout.getRecipeSlotsView(), selectedInputs, batches, recursiveCandidates, player
         );
         try {
             IRecipeTransferError error = handler.get().transferRecipe(
@@ -660,7 +660,8 @@ public final class RecipeTreeTransfer {
         IRecipeSlotsView original,
         List<String> selectedInputs,
         int batches,
-        boolean recursiveCandidates
+        boolean recursiveCandidates,
+        Player player
     ) {
         List<IRecipeSlotView> adjusted = new ArrayList<>();
         int inputIndex = 0;
@@ -671,7 +672,7 @@ public final class RecipeTreeTransfer {
                     inputIndex < selectedInputs.size() ? selectedInputs.get(inputIndex) : "",
                     recursiveCandidates
                 );
-                adjusted.add(new AdjustedSlot(slot, selected, batches));
+                adjusted.add(new AdjustedSlot(slot, selected, batches, player));
                 inputIndex++;
             } else {
                 adjusted.add(slot);
@@ -699,7 +700,7 @@ public final class RecipeTreeTransfer {
                 recursiveCandidates
             );
             inputIndex++;
-            int slotCapacity = slot.getItemStacks()
+            int slotCapacity = RecipeTreeData.candidateStacks(slot).stream()
                 .filter(stack -> selected.isEmpty() || RecipeTreeData.ingredientKey(stack).equals(selected))
                 .mapToInt(stack -> Math.max(1, stack.getMaxStackSize() / Math.max(1, stack.getCount())))
                 .max()
@@ -731,9 +732,8 @@ public final class RecipeTreeTransfer {
         // candidate search is reserved for the explicit Ctrl-click crafting
         // path; otherwise use only an inventory/network match or JEI's normal
         // first-candidate fallback.
-        return RecipeTreeData.findCandidateWithSupply(slot.getItemStacks()
-                .filter(stack -> !stack.isEmpty())
-                .toList(),
+        return RecipeTreeData.findCandidateWithSupply(
+                RecipeTreeData.candidateStacks(slot),
             recursiveCandidates && RecipeTreeSession.tree() != null)
             .map(RecipeTreeData::ingredientKey)
             .orElse("");
@@ -802,7 +802,7 @@ public final class RecipeTreeTransfer {
                 index < selectedInputs.size() ? selectedInputs.get(index) : "",
                 recursiveCandidates
             );
-            ItemStack template = input.getItemStacks()
+            ItemStack template = RecipeTreeData.candidateStacks(input).stream()
                 .filter(stack -> !stack.isEmpty())
                 .filter(stack -> selected.isEmpty() || RecipeTreeData.ingredientKey(stack).equals(selected))
                 .findFirst()
@@ -853,7 +853,7 @@ public final class RecipeTreeTransfer {
         private final IRecipeSlotView delegate;
         private final List<ITypedIngredient<?>> ingredients;
 
-        private AdjustedSlot(IRecipeSlotView delegate, String selectedKey, int batches) {
+        private AdjustedSlot(IRecipeSlotView delegate, String selectedKey, int batches, Player player) {
             this.delegate = delegate;
             IJeiRuntime runtime = DirectoryRecipePlugin.getJeiRuntime();
             List<ITypedIngredient<?>> adjusted = new ArrayList<>();
@@ -864,7 +864,22 @@ public final class RecipeTreeTransfer {
                     }
                     Optional<ItemStack> itemStack = ingredient.getItemStack();
                     if (itemStack.isEmpty()) {
-                        if (selectedKey.isEmpty()) {
+                        // Keep the original JEI ingredient so custom handlers
+                        // that expose a real tank can consume the FluidStack.
+                        Optional<net.neoforged.neoforge.fluids.FluidStack> fluid =
+                            FluidRecipeCompat.fluid(ingredient);
+                        if (fluid.isPresent()) {
+                            FluidRecipeCompat.scaled(ingredient, batches, runtime.getIngredientManager())
+                                .ifPresent(adjusted::add);
+                            // Some handlers model a tank as an item slot. Add
+                            // matching filled containers as item alternatives
+                            // while retaining the fluid ingredient above.
+                            for (ItemStack container : FluidRecipeCompat.matchingContainers(player, fluid.get(), batches)) {
+                                runtime.getIngredientManager()
+                                    .createTypedIngredient(VanillaTypes.ITEM_STACK, container, false)
+                                    .ifPresent(adjusted::add);
+                            }
+                        } else {
                             adjusted.add(ingredient);
                         }
                         continue;

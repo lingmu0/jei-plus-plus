@@ -8,6 +8,7 @@ import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeSidebarButtonController;
 import com.mojang.blaze3d.platform.InputConstants;
 import mezz.jei.common.input.IInternalKeyMappings;
 import mezz.jei.common.util.ImmutableRect2i;
+import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.elements.IconButton;
 import mezz.jei.gui.input.IUserInputHandler;
 import mezz.jei.gui.input.UserInput;
@@ -33,6 +34,8 @@ import java.util.Optional;
 public abstract class BookmarkOverlayMixin {
     @Shadow @Final private IconButton historyButton;
 
+    @Shadow @Final private BookmarkList bookmarkList;
+
     @Shadow
     public abstract boolean hasRoom();
 
@@ -47,6 +50,7 @@ public abstract class BookmarkOverlayMixin {
      */
     @Unique
     private void jeiPlusPlus$ensureTreeButton() {
+        RecipeTreeFavorites.bind(bookmarkList);
         if (jeiPlusPlus$treeButton == null) {
             jeiPlusPlus$treeButton = new IconButton(new RecipeTreeSidebarButtonController());
         }
@@ -74,7 +78,17 @@ public abstract class BookmarkOverlayMixin {
 
     @Inject(method = "isListDisplayed", at = @At("RETURN"), cancellable = true, remap = false)
     private void jeiPlusPlus$showTreeFavorites(CallbackInfoReturnable<Boolean> cir) {
-        if (RecipeTreeFavorites.isActive() && jeiPlusPlus$isTreeButtonScreen() && hasRoom()) {
+        // The recipe-tree screen owns the whole canvas. Keep JEI's bookmark
+        // grid, its page controls, tooltips, and hit boxes out of this screen;
+        // the separate recipe-tree sidebar button is still drawn below.
+        if (Minecraft.getInstance().screen instanceof RecipeTreeScreen) {
+            cir.setReturnValue(false);
+            return;
+        }
+        // In crafting mode JEI computes hasRoom() before the bookmark grid has
+        // been populated with the synthetic tree entries. Requiring it here
+        // creates a circular false result and hides even native bookmarks.
+        if (RecipeTreeFavorites.isActive() && jeiPlusPlus$isTreeButtonScreen()) {
             cir.setReturnValue(true);
         }
     }

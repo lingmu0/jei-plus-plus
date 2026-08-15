@@ -347,9 +347,11 @@ public final class RecipeTreeScreen extends Screen {
             int border = selected ? 0xFF55FFAA : (hovered ? 0xFF8099FF : 0xFF707070);
             graphics.fill(slotX, slotY, slotX + 18, slotY + 18, border);
             graphics.fill(slotX + 1, slotY + 1, slotX + 17, slotY + 17, 0xFF202020);
-            ItemStack renderStack = choice.copy();
+            ItemStack renderStack = FluidRecipeCompat.copyWithDisplay(choice);
             renderStack.setCount(1);
-            graphics.renderItem(renderStack, slotX + 1, slotY + 1);
+            if (!FluidRecipeCompat.render(graphics, renderStack, slotX + 1, slotY + 1)) {
+                graphics.renderItem(renderStack, slotX + 1, slotY + 1);
+            }
         }
 
         int footerY = panelY + INPUT_CHOICE_HEIGHT - 18;
@@ -431,9 +433,11 @@ public final class RecipeTreeScreen extends Screen {
 
         int itemX = node.recipe() == null ? node.x() - 8 : left + 24;
         int itemY = node.y() - 8;
-        ItemStack renderStack = node.stack().copy();
+        ItemStack renderStack = FluidRecipeCompat.copyWithDisplay(node.stack());
         renderStack.setCount(1);
-        graphics.renderItem(renderStack, itemX, itemY);
+        if (!FluidRecipeCompat.render(graphics, renderStack, itemX, itemY)) {
+            graphics.renderItem(renderStack, itemX, itemY);
+        }
         drawAmount(graphics, formatNodeAmount(node.amount()), itemX, itemY, amountColor(node));
         if (node.hasAlternatives()) {
             drawAlternativeMarker(graphics, node, itemX, itemY);
@@ -488,9 +492,11 @@ public final class RecipeTreeScreen extends Screen {
     }
 
     private void drawCost(GuiGraphics graphics, RenderCost renderCost) {
-        ItemStack stack = renderCost.cost.stack().copy();
+        ItemStack stack = FluidRecipeCompat.copyWithDisplay(renderCost.cost.stack());
         stack.setCount(1);
-        graphics.renderItem(stack, renderCost.x, renderCost.y);
+        if (!FluidRecipeCompat.render(graphics, stack, renderCost.x, renderCost.y)) {
+            graphics.renderItem(stack, renderCost.x, renderCost.y);
+        }
         drawAmount(
             graphics,
             costText(renderCost.cost, renderCost.leftover),
@@ -531,24 +537,35 @@ public final class RecipeTreeScreen extends Screen {
             if (!choice.isEmpty()) {
                 graphics.pose().pushPose();
                 graphics.pose().translate(0, 0, 700);
-                graphics.renderTooltip(font, choice, mouseX, mouseY);
+                if (!FluidRecipeCompat.renderTooltip(graphics, choice, mouseX, mouseY)) {
+                    graphics.renderTooltip(font, choice, mouseX, mouseY);
+                }
                 graphics.pose().popPose();
             }
             return;
         }
         RecipeTreeData.Node node = hoveredNode(mouseX, mouseY);
         if (node != null) {
-            if (isAlternativeArea(node, mouseX, mouseY)) {
+            if (node.isOutputChoice() && isAlternativeArea(node, mouseX, mouseY)) {
+                graphics.renderTooltip(
+                    font,
+                    Component.translatable("jei_plus_plus.recipe_tree.output_choice", node.alternatives().size()),
+                    mouseX,
+                    mouseY
+                );
+            } else if (isAlternativeArea(node, mouseX, mouseY)) {
                 String key = node.explicitChoice()
                     ? "jei_plus_plus.recipe_tree.input_choice.selected"
                     : "jei_plus_plus.recipe_tree.input_choice";
                 graphics.renderTooltip(font, Component.translatable(key, node.alternatives().size()), mouseX, mouseY);
-            } else if (hasUnfixedAlternatives(node) && isItemArea(node, mouseX, mouseY)) {
+            } else if ((hasUnfixedAlternatives(node) || node.isOutputChoice()) && isItemArea(node, mouseX, mouseY)) {
                 renderAlternativeTooltip(graphics, node, mouseX, mouseY);
             } else if (isCategoryArea(node, mouseX, mouseY) && node.recipe() != null) {
                 graphics.renderTooltip(font, node.recipe().ref().category().getTitle(), mouseX, mouseY);
             } else {
-                graphics.renderTooltip(font, node.stack(), mouseX, mouseY);
+                if (!FluidRecipeCompat.renderTooltip(graphics, node.stack(), mouseX, mouseY)) {
+                    graphics.renderTooltip(font, node.stack(), mouseX, mouseY);
+                }
             }
             return;
         }
@@ -564,7 +581,9 @@ public final class RecipeTreeScreen extends Screen {
         } else {
             for (RenderCost cost : costs) {
                 if (containsTreeArea(treeMouse[0], treeMouse[1], cost.x, cost.y, 16, 16)) {
-                    graphics.renderTooltip(font, cost.cost.stack(), mouseX, mouseY);
+                    if (!FluidRecipeCompat.renderTooltip(graphics, cost.cost.stack(), mouseX, mouseY)) {
+                        graphics.renderTooltip(font, cost.cost.stack(), mouseX, mouseY);
+                    }
                     return;
                 }
             }
@@ -580,19 +599,24 @@ public final class RecipeTreeScreen extends Screen {
     ) {
         IJeiRuntime runtime = DirectoryRecipePlugin.getJeiRuntime();
         if (runtime == null || node == null) {
-            graphics.renderTooltip(font, node == null ? ItemStack.EMPTY : node.stack(), mouseX, mouseY);
+            if (node == null || !FluidRecipeCompat.renderTooltip(graphics, node.stack(), mouseX, mouseY)) {
+                graphics.renderTooltip(font, node == null ? ItemStack.EMPTY : node.stack(), mouseX, mouseY);
+            }
             return;
         }
 
         List<ItemStack> alternatives = node.alternatives().stream()
             .map(stack -> {
-                ItemStack copy = stack.copy();
+                ItemStack copy = FluidRecipeCompat.copyWithDisplay(stack);
                 copy.setCount(1);
                 return copy;
             })
             .toList();
-        ItemStack displayed = node.stack().copy();
+        ItemStack displayed = FluidRecipeCompat.copyWithDisplay(node.stack());
         displayed.setCount(1);
+        if (FluidRecipeCompat.renderTooltip(graphics, displayed, mouseX, mouseY)) {
+            return;
+        }
         var typed = runtime.getIngredientManager()
             .createTypedIngredient(VanillaTypes.ITEM_STACK, displayed, false);
         if (typed.isEmpty()) {
@@ -709,7 +733,8 @@ public final class RecipeTreeScreen extends Screen {
                 return true;
             }
             if (button == 0) {
-                if (!hasShiftDown() && hasUnfixedAlternatives(node) && isItemArea(node, mouseX, mouseY)) {
+                if (!hasShiftDown() && hasUnfixedAlternatives(node)
+                    && !node.isOutputChoice() && isItemArea(node, mouseX, mouseY)) {
                     showCandidateDirectory(node);
                 } else if (isCategoryArea(node, mouseX, mouseY) && node.recipe() != null) {
                     showExactRecipe(node);
@@ -775,10 +800,9 @@ public final class RecipeTreeScreen extends Screen {
         }
         List<mezz.jei.api.ingredients.ITypedIngredient<?>> typed = new ArrayList<>();
         for (ItemStack alternative : node.alternatives()) {
-            ItemStack stack = alternative.copy();
+            ItemStack stack = FluidRecipeCompat.copyWithDisplay(alternative);
             stack.setCount(1);
-            runtime.getIngredientManager()
-                .createTypedIngredient(VanillaTypes.ITEM_STACK, stack, false)
+            FluidRecipeCompat.toTyped(runtime.getIngredientManager(), stack)
                 .ifPresent(typed::add);
         }
         DirectoryViewer.show(runtime.getRecipesGui(), typed);
@@ -870,12 +894,18 @@ public final class RecipeTreeScreen extends Screen {
         if (runtime == null || node.stack().isEmpty()) {
             return;
         }
-        Optional<IFocus<ItemStack>> focus = RecipeTreeData.createOutputFocus(runtime, node.stack());
-        if (focus.isEmpty()) {
+        Optional<? extends IFocus<?>> fluidFocus = FluidRecipeCompat.createOutputFocus(runtime, node.stack());
+        Optional<IFocus<ItemStack>> itemFocus = fluidFocus.isPresent()
+            ? Optional.empty()
+            : RecipeTreeData.createOutputFocus(runtime, node.stack());
+        IFocus<?> focus = fluidFocus.isPresent()
+            ? fluidFocus.get()
+            : itemFocus.orElse(null);
+        if (focus == null) {
             return;
         }
         RecipeTreeSession.beginResolution(node, this);
-        runtime.getRecipesGui().show(focus.get());
+        runtime.getRecipesGui().show(List.of(focus));
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

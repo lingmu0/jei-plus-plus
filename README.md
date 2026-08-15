@@ -37,7 +37,8 @@ JEI++ 是一个只在客户端运行的 JEI 附属模组，不添加方块、物
 | `jsonGroupingEnabled` | `true` | 启用 JSON 自定义分组 |
 | `mixNamespaceGroups` | `true` | 默认分组是否混合不同 Mod 命名空间 |
 | `defaultGroups.<分组名>` | `true` | 单独启用或禁用一个默认分组 |
-| `preferBookmarkedRecipeOnIngredientBookmark` | `true` | 收藏输出槽时优先收藏对应配方 |
+| `preferRecipeBookmarkOnOutput` | `true` | 收藏输出槽时优先收藏对应配方；关闭后只收藏产物物品 |
+| `hideRecipeBookmarkButton` | `true` | 隐藏 JEI 原生的添加到书签按钮；关闭后保留该按钮 |
 
 默认配方选择保存在 `config/jei_plus_plus/recipe_defaults.json`。JSON 分组文件放在 `config/jei_plus_plus/stack_groups/*.json`，刷新 JEI 物品列表时会重新读取。
 
@@ -114,7 +115,8 @@ The client configuration file is `config/jei_plus_plus-client.toml`:
 | `jsonGroupingEnabled` | `true` | Enable custom JSON groups |
 | `mixNamespaceGroups` | `true` | Mix default groups across Mod namespaces |
 | `defaultGroups.<group>` | `true` | Enable or disable one default group |
-| `preferBookmarkedRecipeOnIngredientBookmark` | `true` | Prefer the recipe when bookmarking an output |
+| `preferRecipeBookmarkOnOutput` | `true` | Prefer the recipe when bookmarking an output; when disabled, bookmark only the output ingredient |
+| `hideRecipeBookmarkButton` | `true` | Hide JEI's native add-to-bookmark button; when disabled, keep the button visible |
 
 Default-recipe choices are saved in `config/jei_plus_plus/recipe_defaults.json`. JSON group files are loaded from `config/jei_plus_plus/stack_groups/*.json` whenever JEI refreshes its item list.
 

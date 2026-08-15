@@ -11,10 +11,15 @@ import java.util.Map;
 public final class JeiPlusPlusConfig {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
-    public static final ModConfigSpec.BooleanValue PREFER_BOOKMARKED_RECIPE_ON_INGREDIENT_BOOKMARK =
+    public static final ModConfigSpec.BooleanValue PREFER_RECIPE_BOOKMARK_ON_OUTPUT =
         BUILDER
-            .comment("When JEI prioritizes bookmarked recipes, bookmark the recipe under the cursor instead of the ingredient.")
-            .define("preferBookmarkedRecipeOnIngredientBookmark", true);
+            .comment("Prefer a recipe bookmark when bookmarking a recipe output. When disabled, bookmark the output ingredient.")
+            .define("preferRecipeBookmarkOnOutput", true);
+
+    public static final ModConfigSpec.BooleanValue HIDE_RECIPE_BOOKMARK_BUTTON =
+        BUILDER
+            .comment("Hide JEI's native add-to-bookmark button in recipe layouts.")
+            .define("hideRecipeBookmarkButton", true);
 
     public static final ModConfigSpec.BooleanValue CREATIVE_TAB_BAR_ENABLED =
         BUILDER
