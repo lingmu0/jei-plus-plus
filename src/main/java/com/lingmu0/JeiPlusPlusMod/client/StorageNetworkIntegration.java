@@ -45,6 +45,10 @@ final class StorageNetworkIntegration {
     private static volatile long cachedAtNanos = Long.MIN_VALUE;
     private static volatile long cachedSnapshotRevision;
     private static volatile List<StoredStack> cachedStacks = List.of();
+    private static volatile List<StoredFluid> cachedFluids = List.of();
+    private static volatile Object prioritizedMenu;
+    private static volatile Set<String> prioritizedKeys = Set.of();
+    private static volatile long prioritizedSnapshotRevision = Long.MIN_VALUE;
 
     private StorageNetworkIntegration() {
     }
@@ -53,13 +57,17 @@ final class StorageNetworkIntegration {
         Object menu = Ae2StorageIntegration.activeMenu();
         long now = System.nanoTime();
         if (menu == null) {
-            if (cachedMenu != null || !cachedStacks.isEmpty()) {
+            if (cachedMenu != null || !cachedStacks.isEmpty() || !cachedFluids.isEmpty()) {
                 cachedSnapshotRevision++;
             }
             cachedMenu = null;
             cachedGameTime = Long.MIN_VALUE;
             cachedAtNanos = now;
             cachedStacks = List.of();
+            cachedFluids = List.of();
+            prioritizedMenu = null;
+            prioritizedKeys = Set.of();
+            prioritizedSnapshotRevision = Long.MIN_VALUE;
             return List.of();
         }
         Minecraft minecraft = Minecraft.getInstance();
@@ -72,29 +80,54 @@ final class StorageNetworkIntegration {
             return cachedStacks;
         }
 
+        boolean refinedMenu = isRefinedStorageMenu(menu);
+        boolean beyondMenu = isBeyondMenu(menu);
+        boolean integratedMenu = isIntegratedTerminalMenu(menu);
+        boolean ae2CraftingMenu = !refinedMenu && !beyondMenu && !integratedMenu
+            && Ae2StorageIntegration.isCraftingMenu(menu);
+        // Do not probe AE2's reflective repository for a terminal that is
+        // known to belong to another storage mod.  The old order paid the
+        // AE2 class/method lookup cost on every 50ms refresh of RS/Beyond/IT.
         List<StoredStack> ae2 = new ArrayList<>();
-        for (Ae2StorageIntegration.StoredStack stored : Ae2StorageIntegration.storedStacks()) {
-            ae2.add(new StoredStack(stored.stack(), stored.amount()));
-        }
-        List<StoredStack> result;
-        if (!ae2.isEmpty() || Ae2StorageIntegration.isCraftingMenu(menu)) {
-            result = ae2;
-        } else {
-            List<StoredStack> refined = refinedStorageStacks(menu);
-            if (!refined.isEmpty() || isRefinedStorageMenu(menu)) {
-                result = refined;
-            } else {
-                List<StoredStack> beyond = beyondStacks(menu);
-                result = !beyond.isEmpty() || isBeyondMenu(menu)
-                    ? beyond
-                    : integratedTerminalStacks(menu);
+        List<StoredFluid> ae2Fluids = new ArrayList<>();
+        if (!refinedMenu && !beyondMenu && !integratedMenu) {
+            for (Ae2StorageIntegration.StoredStack stored : Ae2StorageIntegration.storedStacks()) {
+                ae2.add(new StoredStack(stored.stack(), stored.amount()));
+            }
+            for (StorageNetworkIntegration.StoredFluid stored : Ae2StorageIntegration.storedFluids()) {
+                ae2Fluids.add(new StoredFluid(stored.key(), stored.amount()));
             }
         }
-        boolean snapshotChanged = menu != cachedMenu || !sameSnapshot(cachedStacks, result);
+        List<StoredStack> result;
+        List<StoredFluid> fluidResult;
+        if (!ae2.isEmpty() || !ae2Fluids.isEmpty() || ae2CraftingMenu) {
+            result = ae2;
+            fluidResult = ae2Fluids;
+        } else {
+            RefinedSnapshot refined = refinedStorageSnapshot(menu);
+            if (!refined.stacks().isEmpty() || !refined.fluids().isEmpty() || refinedMenu) {
+                result = refined.stacks();
+                fluidResult = refined.fluids();
+            } else {
+                BeyondSnapshot beyond = beyondSnapshot(menu);
+                if (!beyond.stacks().isEmpty() || !beyond.fluids().isEmpty() || beyondMenu) {
+                    result = beyond.stacks();
+                    fluidResult = beyond.fluids();
+                } else {
+                    result = integratedTerminalStacks(menu);
+                    fluidResult = integratedTerminalFluids(menu);
+                }
+            }
+        }
+        fluidResult = mergeFluids(fluidResult);
+        boolean snapshotChanged = menu != cachedMenu
+            || !sameSnapshot(cachedStacks, result)
+            || !sameFluidSnapshot(cachedFluids, fluidResult);
         cachedMenu = menu;
         cachedGameTime = gameTime;
         cachedAtNanos = now;
         cachedStacks = List.copyOf(result);
+        cachedFluids = List.copyOf(fluidResult);
         if (snapshotChanged) {
             cachedSnapshotRevision++;
         }
@@ -111,34 +144,123 @@ final class StorageNetworkIntegration {
         return cachedSnapshotRevision;
     }
 
-    private static boolean sameSnapshot(List<StoredStack> previous, List<StoredStack> next) {
-        if (previous.size() != next.size()) {
-            return false;
+    /** Fluid amounts are returned in millibuckets, independent of container units. */
+    static List<StoredFluid> storedFluids() {
+        storedStacks();
+        return cachedFluids;
+    }
+
+    /**
+     * Returns the item and fluid lists produced by one shared network scan.
+     * Callers that need both lists should use this instead of invoking the two
+     * accessors independently; the returned lists are immutable cache views.
+     */
+    static StorageSnapshot snapshot() {
+        List<StoredStack> stacks = storedStacks();
+        return new StorageSnapshot(stacks, cachedFluids, cachedSnapshotRevision);
+    }
+
+    record StorageSnapshot(List<StoredStack> stacks, List<StoredFluid> fluids, long revision) {
+        StorageSnapshot {
+            stacks = List.copyOf(stacks == null ? List.of() : stacks);
+            fluids = List.copyOf(fluids == null ? List.of() : fluids);
         }
-        for (int index = 0; index < previous.size(); index++) {
-            StoredStack left = previous.get(index);
-            StoredStack right = next.get(index);
-            if (left.amount != right.amount || !left.key.equals(right.key)) {
-                return false;
+    }
+
+    private static boolean sameSnapshot(List<StoredStack> previous, List<StoredStack> next) {
+        // The terminal integrations are allowed to reorder their view lists
+        // when JEI++ moves highlighted entries to the front.  Comparing by
+        // list position made that purely visual reorder look like a storage
+        // update, which bumped the snapshot revision and caused the next
+        // refresh to undo/reapply sorting repeatedly.  Compare the actual
+        // inventory contents instead of the current UI order.
+        return stackAmounts(previous).equals(stackAmounts(next));
+    }
+
+    private static boolean sameFluidSnapshot(List<StoredFluid> previous, List<StoredFluid> next) {
+        Map<String, Long> left = new java.util.HashMap<>();
+        Map<String, Long> right = new java.util.HashMap<>();
+        if (previous != null) {
+            for (StoredFluid value : previous) {
+                if (value != null && !value.key.isEmpty() && value.amount > 0) {
+                    left.merge(value.key, value.amount, StorageNetworkIntegration::safeAdd);
+                }
             }
         }
-        return true;
+        if (next != null) {
+            for (StoredFluid value : next) {
+                if (value != null && !value.key.isEmpty() && value.amount > 0) {
+                    right.merge(value.key, value.amount, StorageNetworkIntegration::safeAdd);
+                }
+            }
+        }
+        return left.equals(right);
+    }
+
+    private static Map<String, Long> stackAmounts(List<StoredStack> values) {
+        Map<String, Long> amounts = new java.util.HashMap<>();
+        if (values != null) {
+            for (StoredStack value : values) {
+                if (value != null && !value.key.isEmpty() && value.amount > 0) {
+                    amounts.merge(value.key, value.amount, StorageNetworkIntegration::safeAdd);
+                }
+            }
+        }
+        return amounts;
+    }
+
+    private static List<StoredFluid> mergeFluids(List<StoredFluid> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        Map<String, Long> amounts = new java.util.LinkedHashMap<>();
+        for (StoredFluid value : values) {
+            if (value != null && !value.key.isEmpty() && value.amount > 0) {
+                amounts.merge(value.key, value.amount, StorageNetworkIntegration::safeAdd);
+            }
+        }
+        return amounts.entrySet().stream()
+            .map(entry -> new StoredFluid(entry.getKey(), entry.getValue()))
+            .toList();
+    }
+
+    private static long safeAdd(long left, long right) {
+        if (right > 0 && left > Long.MAX_VALUE - right) {
+            return Long.MAX_VALUE;
+        }
+        return Math.max(0L, left + right);
     }
 
     /** Moves network-backed entries ahead of ordinary entries where the mod exposes a mutable view. */
     static void prioritizeVisibleEntries(Set<String> keys) {
-        Ae2StorageIntegration.prioritizeVisibleEntries(keys);
         Object menu = Ae2StorageIntegration.activeMenu();
-        if (menu == null || keys == null || keys.isEmpty()) {
+        Set<String> normalizedKeys = keys == null || keys.isEmpty() ? Set.of() : Set.copyOf(keys);
+        long snapshotRevision = cachedSnapshotRevision;
+        if (menu == null) {
+            prioritizedMenu = null;
+            prioritizedKeys = Set.of();
+            prioritizedSnapshotRevision = Long.MIN_VALUE;
             return;
         }
+        // Do not use the snapshot revision as a blanket early-out here.  A
+        // terminal's own quantity/name sort can reorder the same resources
+        // without changing their contents.  Each integration below checks
+        // whether its visible list is already highlighted-first and reapplies
+        // the stable partition only when the UI order actually needs repair.
         try {
-            prioritizeRs2(menu, keys);
-            prioritizeRs1(keys);
-            prioritizeBeyond(menu, keys);
-            prioritizeIntegrated(menu, keys);
+            Ae2StorageIntegration.prioritizeVisibleEntries(normalizedKeys);
+            if (!normalizedKeys.isEmpty() || !prioritizedKeys.isEmpty()) {
+                prioritizeRs2(menu, normalizedKeys);
+                prioritizeRs1(normalizedKeys);
+                prioritizeBeyond(menu, normalizedKeys);
+                prioritizeIntegrated(menu, normalizedKeys);
+            }
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             // Optional internal APIs are allowed to change without affecting JEI++.
+        } finally {
+            prioritizedMenu = menu;
+            prioritizedKeys = normalizedKeys;
+            prioritizedSnapshotRevision = snapshotRevision;
         }
     }
 
@@ -431,89 +553,97 @@ final class StorageNetworkIntegration {
             || isIntegratedTerminalMenu(menu);
     }
 
-    private static List<StoredStack> refinedStorageStacks(Object menu) {
+    /** Reads RS 1.x/2.x item and fluid views in one pass when they share a list. */
+    private static RefinedSnapshot refinedStorageSnapshot(Object menu) {
         try {
             if (isRs1Menu(menu)) {
-                // The client grid view is the authoritative RS 1.x snapshot:
-                // its IGridStack quantity is what the terminal actually shows.
-                // Storage-cache entries vary between RS releases and may only
-                // carry a normalized display stack, which made bookmark counts
-                // appear as 1 even while highlighting and sorting worked.
-                List<StoredStack> viewStacks = refinedStorageViewStacks();
-                if (viewStacks != null) {
-                    return viewStacks;
+                AbstractContainerScreen<?> screen = activeContainerScreen();
+                if (screen != null && classOrSuper(screen.getClass(), RS1_SCREEN)) {
+                    Object view = invokeNoArg(screen, "getView");
+                    Object entries = invokeNoArg(view, "getAllStacks");
+                    if (entries instanceof Iterable<?> iterable) {
+                        List<StoredStack> stacks = new ArrayList<>();
+                        List<StoredFluid> fluids = new ArrayList<>();
+                        for (Object entry : iterable) {
+                            ItemStack stack = rs1EntryStack(entry);
+                            long amount = numberValue(invokeNoArg(entry, "getQuantity"));
+                            if (!stack.isEmpty() && amount > 0) {
+                                stacks.add(new StoredStack(stack, amount));
+                            } else {
+                                StoredFluid fluid = fluidEntry(entry, "getQuantity", null);
+                                if (fluid != null) {
+                                    fluids.add(fluid);
+                                }
+                            }
+                        }
+                        return new RefinedSnapshot(List.copyOf(stacks), List.copyOf(fluids));
+                    }
                 }
+                // Older RS 1.x screens expose separate item/fluid caches.
                 Object grid = invokeNoArg(menu, "getGrid");
+                List<StoredStack> stacks = new ArrayList<>();
                 Object cache = invokeNoArg(grid, "getStorageCache");
                 Object list = invokeNoArg(cache, "getList");
                 Object entries = invokeNoArg(list, "getStacks");
                 if (entries instanceof Iterable<?> iterable) {
-                    List<StoredStack> result = new ArrayList<>();
                     for (Object entry : iterable) {
                         ItemStack stack = stackOf(entry);
                         if (stack.isEmpty()) {
                             stack = stackOf(invokeNoArg(entry, "getStack"));
                         }
                         if (!stack.isEmpty() && stack.getCount() > 0) {
-                            result.add(new StoredStack(stack, stack.getCount()));
+                            stacks.add(new StoredStack(stack, stack.getCount()));
                         }
                     }
-                    return result;
                 }
+                List<StoredFluid> fluids = new ArrayList<>();
+                for (String cacheName : List.of("getFluidStorageCache", "getFluidCache")) {
+                    Object fluidCache = invokeNoArg(grid, cacheName);
+                    Object fluidList = invokeNoArg(fluidCache, "getList");
+                    Object fluidEntries = invokeNoArg(fluidList, "getStacks");
+                    fluids.addAll(collectFluidEntries(fluidEntries, null));
+                    if (!fluids.isEmpty()) {
+                        break;
+                    }
+                }
+                return new RefinedSnapshot(List.copyOf(stacks), List.copyOf(fluids));
             }
             if (isRs2Menu(menu)) {
                 Object repository = invokeNoArg(menu, "getRepository");
                 Object entries = invokeNoArg(repository, "getViewList");
                 if (entries instanceof Iterable<?> iterable) {
-                    List<StoredStack> result = new ArrayList<>();
+                    List<StoredStack> stacks = new ArrayList<>();
+                    List<StoredFluid> fluids = new ArrayList<>();
                     for (Object entry : iterable) {
                         String name = entry == null ? "" : entry.getClass().getName();
-                        if (!name.endsWith("ItemGridResource")) {
-                            continue;
-                        }
-                        ItemStack stack = stackOf(invokeNoArg(entry, "getItemStack"));
-                        long amount = numberValue(invoke(entry, "getAmount", repository.getClass(), repository));
-                        if (amount <= 0) {
-                            amount = stack.getCount();
-                        }
-                        if (!stack.isEmpty() && amount > 0) {
-                            stack.setCount(1);
-                            result.add(new StoredStack(stack, amount));
+                        if (name.endsWith("ItemGridResource")) {
+                            ItemStack stack = stackOf(invokeNoArg(entry, "getItemStack"));
+                            long amount = numberValue(invoke(entry, "getAmount", repository.getClass(), repository));
+                            if (amount <= 0) {
+                                amount = stack.getCount();
+                            }
+                            if (!stack.isEmpty() && amount > 0) {
+                                stack.setCount(1);
+                                stacks.add(new StoredStack(stack, amount));
+                            }
+                        } else {
+                            StoredFluid fluid = fluidEntry(entry, null, repository);
+                            if (fluid != null) {
+                                fluids.add(fluid);
+                            }
                         }
                     }
-                    return result;
+                    return new RefinedSnapshot(List.copyOf(stacks), List.copyOf(fluids));
                 }
             }
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             // Optional RS APIs.
         }
-        return List.of();
+        return RefinedSnapshot.EMPTY;
     }
 
-    /** Returns null when no compatible RS screen is available, and an empty list for an empty grid. */
-    private static List<StoredStack> refinedStorageViewStacks() {
-        AbstractContainerScreen<?> screen = activeContainerScreen();
-        if (screen == null || !classOrSuper(screen.getClass(), RS1_SCREEN)) {
-            return null;
-        }
-        try {
-            Object view = invokeNoArg(screen, "getView");
-            Object entries = invokeNoArg(view, "getAllStacks");
-            if (!(entries instanceof Iterable<?> iterable)) {
-                return null;
-            }
-            List<StoredStack> result = new ArrayList<>();
-            for (Object entry : iterable) {
-                ItemStack stack = rs1EntryStack(entry);
-                long amount = numberValue(invokeNoArg(entry, "getQuantity"));
-                if (!stack.isEmpty() && amount > 0) {
-                    result.add(new StoredStack(stack, amount));
-                }
-            }
-            return result;
-        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
-            return null;
-        }
+    private record RefinedSnapshot(List<StoredStack> stacks, List<StoredFluid> fluids) {
+        private static final RefinedSnapshot EMPTY = new RefinedSnapshot(List.of(), List.of());
     }
 
     private static List<StoredStack> integratedTerminalStacks(Object menu) {
@@ -548,33 +678,157 @@ final class StorageNetworkIntegration {
         }
     }
 
-    private static List<StoredStack> beyondStacks(Object menu) {
-        if (!isBeyondMenu(menu)) {
+    private static List<StoredFluid> integratedTerminalFluids(Object menu) {
+        if (!isIntegratedTerminalMenu(menu)) {
             return List.of();
+        }
+        try {
+            Object tab = integratedFluidClientTab(menu);
+            if (tab == null) {
+                return List.of();
+            }
+            int channel = intValue(invokeNoArg(menu, "getSelectedChannel"));
+            Object entries = invoke(tab, "createUnfilteredIngredientsView", int.class, channel);
+            return collectFluidEntries(entries, null);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return List.of();
+        }
+    }
+
+    /** Scans Beyond Dimensions' mixed item/fluid storage only once per snapshot. */
+    private static BeyondSnapshot beyondSnapshot(Object menu) {
+        if (!isBeyondMenu(menu)) {
+            return BeyondSnapshot.EMPTY;
         }
         try {
             Object storage = readField(menu, "storage");
             Object entries = invokeNoArg(storage, "getStorage");
             if (!(entries instanceof Iterable<?> iterable)) {
-                return List.of();
+                return BeyondSnapshot.EMPTY;
             }
-            List<StoredStack> result = new ArrayList<>();
+            List<StoredStack> stacks = new ArrayList<>();
+            List<StoredFluid> fluids = new ArrayList<>();
             for (Object entry : iterable) {
-                long amount = numberValue(invokeNoArg(entry, "amount"));
-                Object key = invokeNoArg(entry, "key");
-                ItemStack stack = stackOf(invokeNoArg(key, "getReadOnlyStack"));
-                if (stack.isEmpty()) {
-                    stack = stackOf(invokeNoArg(key, "toStack"));
+                if (entry == null || invokeNoArg(entry, "getCraftingOption") != null) {
+                    continue;
                 }
-                if (!stack.isEmpty() && amount > 0) {
+                long amount = numberValue(invokeNoArg(entry, "amount"));
+                if (amount <= 0) {
+                    continue;
+                }
+                Object key = invokeNoArg(entry, "key");
+                ItemStack stack = storageItemStack(key);
+                if (!stack.isEmpty()) {
                     stack.setCount(1);
-                    result.add(new StoredStack(stack, amount));
+                    stacks.add(new StoredStack(stack, amount));
+                    continue;
+                }
+                var info = FluidRecipeCompat.describeFluid(key == null ? entry : key);
+                if (info.isEmpty()) {
+                    Object instance = invokeNoArg(entry, "getInstance");
+                    info = FluidRecipeCompat.describeFluid(instance);
+                }
+                if (info.isPresent()) {
+                    long fluidAmount = Math.max(amount, info.get().amount());
+                    if (fluidAmount > 0) {
+                        fluids.add(new StoredFluid(info.get().key(), fluidAmount));
+                    }
                 }
             }
-            return result;
+            return new BeyondSnapshot(List.copyOf(stacks), List.copyOf(fluids));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return BeyondSnapshot.EMPTY;
+        }
+    }
+
+    private record BeyondSnapshot(List<StoredStack> stacks, List<StoredFluid> fluids) {
+        private static final BeyondSnapshot EMPTY = new BeyondSnapshot(List.of(), List.of());
+    }
+
+    private static ItemStack storageItemStack(Object value) throws ReflectiveOperationException {
+        if (value instanceof ItemStack stack && !stack.isEmpty()) {
+            return stack.copy();
+        }
+        ItemStack stack = stackOf(invokeNoArg(value, "getReadOnlyStack"));
+        if (stack.isEmpty()) {
+            stack = stackOf(invokeNoArg(value, "toStack"));
+        }
+        return stack;
+    }
+
+    private static List<StoredFluid> collectFluidEntries(Object entries, String amountMethod)
+        throws ReflectiveOperationException {
+        return collectFluidEntries(entries, amountMethod, null);
+    }
+
+    /**
+     * Collects fluid resources from a virtual grid.  RS 2.x keeps the amount
+     * on {@code GridResource#getAmount(ResourceRepository)} rather than on
+     * the resource entry itself, so the optional context is passed through
+     * reflectively when that API is present.
+     */
+    private static List<StoredFluid> collectFluidEntries(
+        Object entries,
+        String amountMethod,
+        Object amountContext
+    ) throws ReflectiveOperationException {
+        if (!(entries instanceof Iterable<?> iterable)) {
             return List.of();
         }
+        List<StoredFluid> result = new ArrayList<>();
+        for (Object entry : iterable) {
+            StoredFluid fluid = fluidEntry(entry, amountMethod, amountContext);
+            if (fluid != null) {
+                result.add(fluid);
+            }
+        }
+        return result;
+    }
+
+    private static StoredFluid fluidEntry(Object entry, String amountMethod, Object amountContext)
+        throws ReflectiveOperationException {
+        if (entry == null || invokeNoArg(entry, "getCraftingOption") != null) {
+            return null;
+        }
+        Object value = entry;
+        Object key = invokeNoArg(entry, "key");
+        if (key != null) {
+            value = key;
+        }
+        // Item resources are already handled by the item snapshot. Avoid
+        // walking every item wrapper through the generic fluid reflection path.
+        if (!storageItemStack(value).isEmpty()) {
+            return null;
+        }
+        var info = FluidRecipeCompat.describeFluid(value);
+        if (info.isEmpty()) {
+            Object instance = invokeNoArg(entry, "getInstance");
+            info = FluidRecipeCompat.describeFluid(instance);
+        }
+        if (info.isEmpty()) {
+            return null;
+        }
+        long amount = amountMethod == null ? 0L : numberValue(invokeNoArg(entry, amountMethod));
+        if (amount <= 0) {
+            for (String method : List.of("getQuantity", "getTotalQuantity", "getAmount", "amount", "getCount")) {
+                amount = numberValue(invokeNoArg(entry, method));
+                if (amount > 0) {
+                    break;
+                }
+            }
+        }
+        if (amount <= 0 && amountContext != null) {
+            for (String method : List.of("getAmount", "getQuantity")) {
+                amount = numberValue(invoke(entry, method, amountContext.getClass(), amountContext));
+                if (amount > 0) {
+                    break;
+                }
+            }
+        }
+        if (info.get().amount() > 0) {
+            amount = Math.max(amount, info.get().amount());
+        }
+        return amount > 0 ? new StoredFluid(info.get().key(), amount) : null;
     }
 
     private static Boolean sendRs1Recipe(Object menu, List<ItemStack> templates, boolean send) {
@@ -735,11 +989,13 @@ final class StorageNetworkIntegration {
         }
         Object view = invokeNoArg(repository, "getViewList");
         if (view instanceof List<?> list) {
-            @SuppressWarnings("unchecked")
-            List<Object> mutable = (List<Object>) list;
-            mutable.sort(Comparator.comparing(
+            Comparator<Object> comparator = Comparator.comparing(
                 entry -> !isHighlightedResource(entry, repository, keys)
-            ));
+            );
+            if (isPrioritized(list, entry -> isHighlightedResource(entry, repository, keys))) {
+                return;
+            }
+            sortExposedOrBackingList(repository, list, comparator);
         }
     }
 
@@ -751,9 +1007,11 @@ final class StorageNetworkIntegration {
         Object view = invokeNoArg(screen, "getView");
         Object entries = invokeNoArg(view, "getStacks");
         if (entries instanceof List<?> list) {
-            @SuppressWarnings("unchecked")
-            List<Object> mutable = (List<Object>) list;
-            mutable.sort(Comparator.comparing(entry -> !isHighlightedGridStack(entry, keys)));
+            if (isPrioritized(list, entry -> isHighlightedGridStack(entry, keys))) {
+                return;
+            }
+            sortExposedOrBackingList(view, list,
+                Comparator.comparing(entry -> !isHighlightedGridStack(entry, keys)));
         }
     }
 
@@ -818,9 +1076,11 @@ final class StorageNetworkIntegration {
         Object views = readField(tab, "filteredIngredientsViews");
         Object entries = invoke(views, "get", int.class, channel);
         if (entries instanceof List<?> list) {
-            @SuppressWarnings("unchecked")
-            List<Object> mutable = (List<Object>) list;
-            mutable.sort(Comparator.comparing(entry -> !isHighlightedIntegratedEntry(entry, keys)));
+            if (isPrioritized(list, entry -> isHighlightedIntegratedEntry(entry, keys))) {
+                return;
+            }
+            sortExposedOrBackingList(views, list,
+                Comparator.comparing(entry -> !isHighlightedIntegratedEntry(entry, keys)));
         }
     }
 
@@ -831,9 +1091,24 @@ final class StorageNetworkIntegration {
         if (graphics == null || screen == null || !RecipeTreeFavorites.isActive()) {
             return;
         }
+        // Refresh after the terminal has been opened as well as after its
+        // network snapshot changes. This is especially important for RS fluid
+        // entries: the menu can be created before the first fluid sync arrives.
+        RecipeTreeFavorites.refreshThrottled();
         try {
             if (classOrSuper(screen.getClass(), RS1_SCREEN)) {
                 renderRs1Highlights(graphics, screen);
+            }
+            Object menu = screen.getMenu();
+            if (isRs2Menu(menu) || isRs2Screen(screen)) {
+                renderRs2Highlights(graphics, screen);
+            }
+            if (Ae2StorageIntegration.isCraftingMenu(menu)
+                || classOrSuper(screen.getClass(), "appeng.client.gui.me.common.MEStorageScreen")) {
+                renderAe2Highlights(graphics, screen);
+            }
+            if (isBeyondMenu(menu)) {
+                renderBeyondHighlights(graphics, screen);
             }
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             // Rendering integrations must never make an optional terminal fatal.
@@ -853,6 +1128,7 @@ final class StorageNetworkIntegration {
         if (graphics == null || screen == null || !RecipeTreeFavorites.isActive()) {
             return;
         }
+        RecipeTreeFavorites.refreshThrottled();
         try {
             if (classOrSuper(screen.getClass(), IT_SCREEN)) {
                 renderIntegratedHighlights(graphics, screen);
@@ -874,12 +1150,96 @@ final class StorageNetworkIntegration {
         int start = rowOffset * 9;
         for (int local = 0; local < rows * 9 && start + local < list.size(); local++) {
             ItemStack stack = rs1EntryStack(list.get(start + local));
-            drawHighlight(
-                graphics,
-                screen.getGuiLeft() + 8 + local % 9 * 18,
-                screen.getGuiTop() + 19 + local / 9 * 18,
-                stack
-            );
+            int x = screen.getGuiLeft() + 8 + local % 9 * 18;
+            int y = screen.getGuiTop() + 19 + local / 9 * 18;
+            drawHighlight(graphics, x, y, stack);
+            if (stack.isEmpty()) {
+                FluidRecipeCompat.describeFluid(list.get(start + local))
+                    .ifPresent(info -> drawHighlightKey(graphics, x, y, info.key()));
+            }
+        }
+    }
+
+    /**
+     * RS 2.x renders virtual resources instead of vanilla slots.  Its grid
+     * uses the same 18-pixel cell geometry as RS 1.x, but keeps scrolling and
+     * pinned-row state on the screen.  Read those values reflectively so the
+     * highlight follows the resource even when RS changes its screen class.
+     */
+    private static void renderRs2Highlights(GuiGraphics graphics, AbstractContainerScreen<?> screen)
+        throws ReflectiveOperationException {
+        Object repository = invokeNoArg(screen.getMenu(), "getRepository");
+        Object entries = invokeNoArg(repository, "getViewList");
+        if (!(entries instanceof List<?> list)) {
+            return;
+        }
+        int pinRows = Math.max(0, intValue(readField(screen, "pinRows")));
+        int visibleRows = intValue(invokeNoArg(screen, "getVisibleRows"));
+        if (visibleRows <= 0) {
+            visibleRows = intValue(readField(screen, "visibleRows"));
+        }
+        int scrollOffset = Math.max(0, intValue(invokeNoArg(screen, "getScrollbarOffset")));
+        int rowOffset = scrollOffset / 18;
+        int partialPixelOffset = scrollOffset % 18;
+        int resourceRows = Math.max(0, visibleRows - pinRows);
+        int maxCells = resourceRows * 9;
+        int first = rowOffset * 9;
+        int x0 = screen.getGuiLeft() + 8;
+        int y0 = screen.getGuiTop() + 20 + pinRows * 18 - partialPixelOffset;
+        for (int local = 0; local < maxCells && first + local < list.size(); local++) {
+            int row = local / 9;
+            int column = local % 9;
+            int x = x0 + column * 18;
+            int y = y0 + row * 18;
+            Object entry = list.get(first + local);
+            ItemStack stack = stackOf(invokeNoArg(entry, "getItemStack"));
+            drawHighlight(graphics, x, y, stack);
+            if (stack.isEmpty()) {
+                FluidRecipeCompat.describeFluid(entry)
+                    .ifPresent(info -> drawHighlightKey(graphics, x, y, info.key()));
+            }
+        }
+    }
+
+    private static void renderAe2Highlights(GuiGraphics graphics, AbstractContainerScreen<?> screen)
+        throws ReflectiveOperationException {
+        for (Slot slot : screen.getMenu().slots) {
+            if (!slot.getClass().getName().endsWith("RepoSlot")) {
+                continue;
+            }
+            Object entry = invokeNoArg(slot, "getEntry");
+            Object key = invokeNoArg(entry, "getWhat");
+            FluidRecipeCompat.describeFluid(key)
+                .ifPresent(info -> drawHighlightKey(
+                    graphics,
+                    screen.getGuiLeft() + slot.x,
+                    screen.getGuiTop() + slot.y,
+                    info.key()
+                ));
+        }
+    }
+
+    private static void renderBeyondHighlights(GuiGraphics graphics, AbstractContainerScreen<?> screen)
+        throws ReflectiveOperationException {
+        for (Slot slot : screen.getMenu().slots) {
+            String name = slot.getClass().getName();
+            if (!name.contains("StackTypedSlot")) {
+                continue;
+            }
+            Object typed = invokeNoArg(slot, "getTypedStackFromUnifiedStorage");
+            Object key = invokeNoArg(typed, "key");
+            if (key == null) {
+                key = invokeNoArg(typed, "getKey");
+            }
+            int x = screen.getGuiLeft() + slot.x;
+            int y = screen.getGuiTop() + slot.y;
+            ItemStack stack = storageItemStack(key);
+            if (!stack.isEmpty()) {
+                drawHighlight(graphics, x, y, stack);
+            } else {
+                FluidRecipeCompat.describeFluid(key)
+                    .ifPresent(info -> drawHighlightKey(graphics, x, y, info.key()));
+            }
         }
     }
 
@@ -887,6 +1247,9 @@ final class StorageNetworkIntegration {
         throws ReflectiveOperationException {
         Object menu = screen.getMenu();
         Object tab = integratedItemClientTab(menu);
+        if (tab == null) {
+            tab = integratedFluidClientTab(menu);
+        }
         if (tab == null) {
             return;
         }
@@ -900,7 +1263,8 @@ final class StorageNetworkIntegration {
             return;
         }
         for (int local = 0; local < list.size(); local++) {
-            ItemStack stack = stackOf(invokeNoArg(list.get(local), "getInstance"));
+            Object instance = invokeNoArg(list.get(local), "getInstance");
+            ItemStack stack = stackOf(instance);
             Object value = invoke(screen, "getStorageSlotRect", int.class, start + local);
             // Rect2i belongs to Minecraft, so reflective Mojmap method names
             // are not stable in a production Forge runtime. Cast it and let
@@ -917,6 +1281,16 @@ final class StorageNetworkIntegration {
                     stack,
                     200
                 );
+                if (stack.isEmpty()) {
+                    FluidRecipeCompat.describeFluid(instance)
+                        .ifPresent(info -> drawHighlightKey(
+                            graphics,
+                            rect.getX() - screen.getGuiLeft() - 1,
+                            rect.getY() - screen.getGuiTop() - 1,
+                            info.key(),
+                            200
+                        ));
+                }
             }
         }
     }
@@ -934,13 +1308,33 @@ final class StorageNetworkIntegration {
     }
 
     private static void drawHighlight(GuiGraphics graphics, int x, int y, ItemStack stack, int z) {
-        boolean intermediate = RecipeTreeFavorites.isIntermediate(stack);
-        boolean required = RecipeTreeFavorites.isRequired(stack);
-        if (!intermediate && !required) {
+        if (stack != null && !stack.isEmpty()) {
+            String key = RecipeTreeData.ingredientKey(stack);
+            boolean direct = RecipeTreeFavorites.isFinalProductKey(key)
+                || RecipeTreeFavorites.isIntermediateKey(key)
+                || RecipeTreeFavorites.isRequiredKey(key);
+            if (direct) {
+                drawHighlightKey(graphics, x, y, key, z);
+            } else {
+                FluidRecipeCompat.displayFluidKey(stack)
+                    .ifPresent(fluidKey -> drawHighlightKey(graphics, x, y, fluidKey, z));
+            }
+        }
+    }
+
+    private static void drawHighlightKey(GuiGraphics graphics, int x, int y, String key) {
+        drawHighlightKey(graphics, x, y, key, 300);
+    }
+
+    private static void drawHighlightKey(GuiGraphics graphics, int x, int y, String key, int z) {
+        boolean finalProduct = RecipeTreeFavorites.isFinalProductKey(key);
+        boolean intermediate = RecipeTreeFavorites.isIntermediateKey(key);
+        boolean required = RecipeTreeFavorites.isRequiredKey(key);
+        if (!finalProduct && !intermediate && !required) {
             return;
         }
-        int fill = intermediate ? 0x44FF2222 : 0x3300BBFF;
-        int border = intermediate ? 0xDDFF5555 : 0xCC55DDFF;
+        int fill = finalProduct ? 0x4433CC66 : (intermediate ? 0x44FF2222 : 0x3300BBFF);
+        int border = finalProduct ? 0xDD66FF88 : (intermediate ? 0xDDFF5555 : 0xCC55DDFF);
         graphics.pose().pushPose();
         graphics.pose().translate(0, 0, z);
         graphics.fill(x, y, x + 16, y + 16, fill);
@@ -954,7 +1348,12 @@ final class StorageNetworkIntegration {
     private static boolean isHighlightedGridStack(Object entry, Set<String> keys) {
         try {
             ItemStack stack = rs1EntryStack(entry);
-            return !stack.isEmpty() && keys.contains(RecipeTreeData.ingredientKey(stack));
+            if (!stack.isEmpty()) {
+                return matchesHighlightKey(stack, keys);
+            }
+            return FluidRecipeCompat.describeFluid(entry)
+                .map(info -> keys.contains(info.key()))
+                .orElse(false);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return false;
         }
@@ -976,7 +1375,12 @@ final class StorageNetworkIntegration {
         try {
             Object entry = invoke(storage, "getStackBySlot", int.class, index);
             ItemStack stack = stackOf(invokeNoArg(entry, "toStack"));
-            return !stack.isEmpty() && keys.contains(RecipeTreeData.ingredientKey(stack));
+            if (!stack.isEmpty()) {
+                return matchesHighlightKey(stack, keys);
+            }
+            return FluidRecipeCompat.describeFluid(entry)
+                .map(info -> keys.contains(info.key()))
+                .orElse(false);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return false;
         }
@@ -984,8 +1388,14 @@ final class StorageNetworkIntegration {
 
     private static boolean isHighlightedIntegratedEntry(Object entry, Set<String> keys) {
         try {
-            ItemStack stack = stackOf(invokeNoArg(entry, "getInstance"));
-            return !stack.isEmpty() && keys.contains(RecipeTreeData.ingredientKey(stack));
+            Object instance = invokeNoArg(entry, "getInstance");
+            ItemStack stack = stackOf(instance);
+            if (!stack.isEmpty()) {
+                return matchesHighlightKey(stack, keys);
+            }
+            return FluidRecipeCompat.describeFluid(instance)
+                .map(info -> keys.contains(info.key()))
+                .orElse(false);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return false;
         }
@@ -1020,12 +1430,66 @@ final class StorageNetworkIntegration {
         return null;
     }
 
+    private static Object integratedFluidClientTab(Object menu) throws ReflectiveOperationException {
+        if (!isIntegratedTerminalMenu(menu)) {
+            return null;
+        }
+        Object selected = invokeNoArg(menu, "getSelectedTab");
+        if (selected instanceof String id) {
+            Object tab = invoke(menu, "getTabClient", String.class, id);
+            if (isIntegratedFluidTab(tab)) {
+                return tab;
+            }
+        }
+        Object tabs = invokeNoArg(menu, "getTabsClient");
+        if (tabs instanceof Map<?, ?> map) {
+            for (Object tab : map.values()) {
+                if (isIntegratedFluidTab(tab)) {
+                    return tab;
+                }
+            }
+        }
+        return null;
+    }
+
     private static boolean isIntegratedItemTab(Object tab) {
         if (tab == null) {
             return false;
         }
         String name = tab.getClass().getName();
-        return name.contains("TerminalStorageTabIngredientComponentItemStack");
+        if (name.contains("TerminalStorageTabIngredientComponentItemStack")) {
+            return true;
+        }
+        try {
+            Object component = invokeNoArg(tab, "getIngredientComponent");
+            if (component == null) {
+                return false;
+            }
+            String componentName = String.valueOf(invokeNoArg(component, "getName"));
+            return !componentName.toLowerCase(java.util.Locale.ROOT).contains("fluid");
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return false;
+        }
+    }
+
+    private static boolean isIntegratedFluidTab(Object tab) {
+        if (tab == null) {
+            return false;
+        }
+        String name = tab.getClass().getName();
+        if (name.contains("FluidStack")) {
+            return true;
+        }
+        try {
+            Object component = invokeNoArg(tab, "getIngredientComponent");
+            if (component == null) {
+                return false;
+            }
+            String componentName = String.valueOf(invokeNoArg(component, "getName"));
+            return componentName.toLowerCase(java.util.Locale.ROOT).contains("fluid");
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return false;
+        }
     }
 
     private static boolean classOrSuper(Class<?> type, String name) {
@@ -1040,10 +1504,168 @@ final class StorageNetworkIntegration {
     private static boolean isHighlightedResource(Object resource, Object repository, Set<String> keys) {
         try {
             ItemStack stack = stackOf(invokeNoArg(resource, "getItemStack"));
-            return !stack.isEmpty() && keys.contains(RecipeTreeData.ingredientKey(stack));
+            if (!stack.isEmpty()) {
+                return matchesHighlightKey(stack, keys);
+            }
+            return FluidRecipeCompat.describeFluid(resource)
+                .map(info -> keys.contains(info.key()))
+                .orElse(false);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return false;
         }
+    }
+
+    static boolean matchesHighlightKey(ItemStack stack, Set<String> keys) {
+        String key = RecipeTreeData.ingredientKey(stack);
+        return keys.contains(key)
+            || FluidRecipeCompat.displayFluidKey(stack).map(keys::contains).orElse(false);
+    }
+
+    /**
+     * Returns whether a list is already partitioned with all highlighted
+     * entries before every non-highlighted entry.  The original order inside
+     * each partition is intentionally preserved by the stable sort.
+     */
+    private static boolean isPrioritized(
+        List<?> list,
+        java.util.function.Predicate<Object> highlighted
+    ) {
+        boolean seenUnhighlighted = false;
+        for (Object entry : list) {
+            if (highlighted.test(entry)) {
+                if (seenUnhighlighted) {
+                    return false;
+                }
+            } else {
+                seenUnhighlighted = true;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * RS2 and some optional integrations expose an unmodifiable view list.
+     * In those versions the actual mutable list is held by a small private
+     * view-state object.  Sort that backing list without calling the mod's
+     * native sort routine (which would discard the recipe-tree priority).
+     */
+    @SuppressWarnings("unchecked")
+    private static void sortExposedOrBackingList(
+        Object owner,
+        List<?> exposed,
+        Comparator<Object> comparator
+    ) throws ReflectiveOperationException {
+        try {
+            ((List<Object>) exposed).sort(comparator);
+            return;
+        } catch (UnsupportedOperationException | IllegalArgumentException ignored) {
+            // Fall through to the private backing list.
+        }
+        // Integrated Terminals keeps one list per channel.  A channel view can
+        // be immutable even though the outer list is mutable; replace only the
+        // matching channel with a sorted copy in that case.
+        if (owner instanceof List<?> outer) {
+            int index = identityIndex(outer, exposed);
+            if (index >= 0) {
+                List<Object> sorted = new ArrayList<>();
+                for (Object value : exposed) {
+                    sorted.add(value);
+                }
+                sorted.sort(comparator);
+                try {
+                    ((List<Object>) outer).set(index, sorted);
+                    return;
+                } catch (UnsupportedOperationException | IllegalArgumentException ignored) {
+                    // Continue with reflective backing-list lookup below.
+                }
+            }
+        }
+        List<Object> backing = findBackingList(owner, exposed, 0);
+        if (backing != null) {
+            backing.sort(comparator);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Object> findBackingList(Object owner, List<?> exposed, int depth)
+        throws ReflectiveOperationException {
+        if (owner == null || depth > 2) {
+            return null;
+        }
+        for (Class<?> current = owner.getClass(); current != null; current = current.getSuperclass()) {
+            for (Field field : current.getDeclaredFields()) {
+                if (Modifier.isStatic(field.getModifiers())) {
+                    continue;
+                }
+                try {
+                    field.trySetAccessible();
+                    Object value = field.get(owner);
+                    if (value == exposed) {
+                        continue;
+                    }
+                    if (value instanceof List<?> list) {
+                        if (sharesElements(list, exposed)) {
+                            try {
+                                // Probe mutability without changing the
+                                // element order; an unmodifiable wrapper can
+                                // also share the same element identities.
+                                ((List<Object>) list).sort((left, right) -> 0);
+                                return (List<Object>) list;
+                            } catch (UnsupportedOperationException | IllegalArgumentException ignored) {
+                                continue;
+                            }
+                        }
+                    }
+                    if (depth < 2 && value != null
+                        && !value.getClass().getName().startsWith("java.")) {
+                        List<Object> nested = findBackingList(value, exposed, depth + 1);
+                        if (nested != null) {
+                            return nested;
+                        }
+                    }
+                } catch (IllegalAccessException | RuntimeException ignored) {
+                    // Optional internal implementation; inspect the next field.
+                }
+            }
+        }
+        return null;
+    }
+
+    private static int identityIndex(List<?> values, Object target) {
+        for (int index = 0; index < values.size(); index++) {
+            if (values.get(index) == target) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Confirms that a candidate list is the backing list of the exposed view,
+     * rather than an unrelated resource/index list owned by the same object.
+     * The view wrappers retain element identity, so sampling the first, middle
+     * and last entries is enough without walking a large network twice.
+     */
+    private static boolean sharesElements(List<?> candidate, List<?> exposed) {
+        int size = exposed == null ? 0 : exposed.size();
+        if (candidate == null || size == 0 || candidate.size() != size) {
+            return false;
+        }
+        int[] samples = {0, size / 2, size - 1};
+        for (int index : samples) {
+            if (candidate.get(index) != exposed.get(index)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isRs2Screen(AbstractContainerScreen<?> screen) {
+        if (screen == null) {
+            return false;
+        }
+        String name = screen.getClass().getName();
+        return name.contains("refinedstorage") && name.contains("GridScreen");
     }
 
     private static void readContainer(Object container, List<ItemStack> target, int size) throws ReflectiveOperationException {
@@ -1204,6 +1826,24 @@ final class StorageNetworkIntegration {
 
         ItemStack stack() {
             return stack;
+        }
+
+        long amount() {
+            return amount;
+        }
+    }
+
+    static final class StoredFluid {
+        private final String key;
+        private final long amount;
+
+        StoredFluid(String key, long amount) {
+            this.key = key == null ? "" : key;
+            this.amount = Math.max(0L, amount);
+        }
+
+        String key() {
+            return key;
         }
 
         long amount() {

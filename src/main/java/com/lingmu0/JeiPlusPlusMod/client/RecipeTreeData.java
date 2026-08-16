@@ -52,6 +52,11 @@ public final class RecipeTreeData {
     private static Object cachedCandidateMenu;
     private static long cachedCandidateGameTime = Long.MIN_VALUE;
     private static long cachedCandidateStorageRevision = Long.MIN_VALUE;
+    private static Map<String, MutableCost> cachedInventory = Map.of();
+    private static Map<String, Long> cachedInventoryAmounts = Map.of();
+    private static Object cachedInventoryMenu;
+    private static long cachedInventoryGameTime = Long.MIN_VALUE;
+    private static long cachedInventoryStorageRevision = Long.MIN_VALUE;
 
     private RecipeTreeData() {
     }
@@ -395,8 +400,12 @@ public final class RecipeTreeData {
             calculatePlan(root, safeMultiply(rootStack.getCount(), batches), totalCosts, totalRemainders);
 
             Map<String, MutableCost> missingCosts = new LinkedHashMap<>();
+            Map<String, MutableCost> inventory = Map.of();
             if (craftingMode) {
-                Map<String, MutableCost> inventory = playerInventory();
+                // Build one inventory/network view for the whole analysis.
+                // calculateProgress mutates its working map, so the cached
+                // snapshot returns a private copy for this pass.
+                inventory = inventorySnapshot();
                 calculateProgress(root, safeMultiply(rootStack.getCount(), batches), inventory, missingCosts);
             }
 
@@ -406,7 +415,11 @@ public final class RecipeTreeData {
                 long missing = craftingMode && missingCosts.containsKey(entry.getKey())
                     ? missingCosts.get(entry.getKey()).amount
                     : (craftingMode ? 0 : total.amount);
-                long supplied = craftingMode ? Math.max(0, total.amount - missing) : 0;
+                // Keep the right-hand value as the real amount currently
+                // available.  It is intentionally not capped at the amount
+                // required by this tree (for example, 1000mB / 250mB or
+                // 26 / 3), matching JEI's inventory display semantics.
+                long supplied = craftingMode ? inventoryAmountFromCosts(total.alternatives, inventory) : 0;
                 costs.add(new Cost(copyStack(total.stack), total.alternatives, total.amount, supplied));
             }
 
@@ -437,6 +450,22 @@ public final class RecipeTreeData {
             cachedCraftingStepsRevision = cachedAnalysisRevision;
             cachedCraftingStepsTick = cachedAnalysisTick;
             return cachedCraftingSteps;
+        }
+
+        /**
+         * Creates the direct JEI transfer description for a visible recipe
+         * node. This is intentionally independent of crafting mode: the
+         * recipe-tree plus button is a direct-input transfer, not a recursive
+         * crafting request.
+         */
+        public Optional<CraftStep> directTransferStep(Node node) {
+            if (node == null || node.recipe == null) {
+                return Optional.empty();
+            }
+            analyze();
+            // Match JEI's own "+" button: transfer one recipe operation,
+            // independent of the recipe-tree batch target.
+            return Optional.of(createCraftStep(node, 1));
         }
 
         /** Missing craftable dependencies first, followed by the clicked product. */
@@ -486,7 +515,11 @@ public final class RecipeTreeData {
             if (target == null || target.amount <= 0) {
                 return;
             }
-            Map<String, MutableCost> available = playerInventory();
+            // Reuse the same per-tick player/network snapshot as the normal
+            // analysis pass.  A Ctrl-click may target several nodes; rescanning
+            // AE2/RS/Beyond/Integrated storage for every target was the main
+            // source of the long pause on large recipe trees.
+            Map<String, MutableCost> available = inventorySnapshot();
             // Reserve every equivalent candidate for the clicked output. This
             // prevents an existing output stack from satisfying the target,
             // while keeping all other inventory available to its recipe tree.
@@ -699,7 +732,7 @@ public final class RecipeTreeData {
                 if (ingredientKey(output).equals(node.ingredientKey)) {
                     produced -= remaining;
                 }
-                add(available, output, produced);
+                addSupply(available, output, produced);
             }
         }
 
@@ -903,14 +936,41 @@ public final class RecipeTreeData {
                 .map(RecipeTreeData::copyStack)
                 .orElse(output);
         }
-        Optional<RecipeRef> bookmarked = RecipeTreeFavorites.bookmarkedRecipe(output, candidates(output));
-        if (bookmarked.isPresent()) {
-            RecipeSnapshot bookmarkedSnapshot = snapshot(bookmarked.get());
-            if (bookmarkedSnapshot != null && bookmarkedSnapshot.produces(ingredientKey(output))) {
-                rootSnapshot = bookmarkedSnapshot;
-            }
-        }
+        // The recipe layout that opened the tree is an explicit user choice.
+        // A bookmarked recipe remains the preferred resolution for child
+        // ingredients, but must not replace a different root recipe the
+        // player is currently viewing.
         return Optional.of(new Tree(rootSnapshot, output));
+    }
+
+    /** Recreates a persisted crafting tree after JEI has rebuilt its runtime. */
+    static Optional<Tree> restore(
+        RecipeRef rootRef,
+        String outputKey,
+        int outputCount,
+        long batches,
+        boolean craftingMode
+    ) {
+        if (rootRef == null) {
+            return Optional.empty();
+        }
+        RecipeSnapshot rootSnapshot = snapshot(rootRef);
+        if (rootSnapshot == null || rootSnapshot.outputs().isEmpty()) {
+            return Optional.empty();
+        }
+        ItemStack output = rootSnapshot.outputs().stream()
+            .filter(candidate -> ingredientKey(candidate).equals(outputKey))
+            .findFirst()
+            .orElse(rootSnapshot.outputs().getFirst())
+            .copy();
+        if (outputCount > 0) {
+            output.setCount(Math.min(output.getMaxStackSize(), outputCount));
+        }
+        Tree restored = new Tree(rootSnapshot, output);
+        restored.batches = Math.max(1, Math.min(1_000_000L, batches));
+        restored.craftingMode = craftingMode;
+        restored.invalidateAnalysis();
+        return Optional.of(restored);
     }
 
     public static boolean isSupported(IRecipeLayoutDrawable<?> layout) {
@@ -1085,6 +1145,11 @@ public final class RecipeTreeData {
         cachedCandidateMenu = null;
         cachedCandidateGameTime = Long.MIN_VALUE;
         cachedCandidateStorageRevision = Long.MIN_VALUE;
+        cachedInventory = Map.of();
+        cachedInventoryAmounts = Map.of();
+        cachedInventoryMenu = null;
+        cachedInventoryGameTime = Long.MIN_VALUE;
+        cachedInventoryStorageRevision = Long.MIN_VALUE;
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -1158,7 +1223,7 @@ public final class RecipeTreeData {
         Map<String, ItemStack> unique = new LinkedHashMap<>();
         slot.getItemStacks()
             .filter(item -> !item.isEmpty())
-            .map(FluidRecipeCompat::copyWithDisplay)
+            .map(ItemStack::copy)
             .forEach(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
         slot.getAllIngredients()
             // A tag/directory slot can expose only its first display stack via
@@ -1167,12 +1232,17 @@ public final class RecipeTreeData {
             // example spruce logs when oak planks are listed first).
             .flatMap(ingredient -> ingredient.getIngredient(VanillaTypes.ITEM_STACK).stream())
             .filter(item -> !item.isEmpty())
-            .map(FluidRecipeCompat::copyWithDisplay)
+            .map(ItemStack::copy)
             .forEach(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
         slot.getAllIngredients()
             .flatMap(ingredient -> FluidRecipeCompat.representativeContainer(ingredient).stream())
             .map(FluidRecipeCompat::copyWithDisplay)
             .forEach(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
+        if (input) {
+            slot.getAllIngredients()
+                .flatMap(ingredient -> FluidRecipeCompat.containerCandidate(ingredient).stream())
+                .forEach(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
+        }
         if (input && unique.isEmpty()) {
             var player = net.minecraft.client.Minecraft.getInstance().player;
             if (player != null) {
@@ -1250,23 +1320,124 @@ public final class RecipeTreeData {
         for (int i = 0; i < inventory.getContainerSize(); i++) {
             ItemStack stack = inventory.getItem(i);
             if (!stack.isEmpty()) {
-                add(result, stack, stack.getCount());
+            addSupply(result, stack, stack.getCount());
             }
         }
         // Optional network storage is an additional source of supply for
         // recipe-tree planning and candidate/highlight resolution.
-        for (StorageNetworkIntegration.StoredStack stored : StorageNetworkIntegration.storedStacks()) {
-            add(result, stored.stack(), stored.amount());
+        StorageNetworkIntegration.StorageSnapshot network = StorageNetworkIntegration.snapshot();
+        for (StorageNetworkIntegration.StoredStack stored : network.stacks()) {
+            addSupply(result, stored.stack(), stored.amount());
+        }
+        // Fluid network entries are kept in mB, while the planner uses one
+        // synthetic unit per fluid container.  This preserves the existing
+        // recipe-tree unit model and still allows network fluids to satisfy
+        // fluid candidates recursively.
+        for (StorageNetworkIntegration.StoredFluid stored : network.fluids()) {
+            FluidRecipeCompat.representativeForKey(stored.key(), stored.amount()).ifPresent(stack ->
+                addSupply(result, stack, 1L)
+            );
         }
         return result;
     }
 
-    private static Map<String, Long> playerInventoryAmounts() {
-        Map<String, Long> result = new LinkedHashMap<>();
-        for (Map.Entry<String, MutableCost> entry : playerInventory().entrySet()) {
-            result.put(entry.getKey(), entry.getValue().amount);
+    /**
+     * Reuses one player/network inventory scan for all consumers in a game
+     * tick. The returned map is mutable because the planning pass consumes it;
+     * the cached entries themselves are copied before returning.
+     */
+    private static Map<String, MutableCost> inventorySnapshot() {
+        var minecraft = net.minecraft.client.Minecraft.getInstance();
+        Object menu = Ae2StorageIntegration.activeMenu();
+        long gameTime = minecraft.level == null ? -1L : minecraft.level.getGameTime();
+        long storageRevision = StorageNetworkIntegration.snapshotRevision();
+        if (menu == cachedInventoryMenu
+            && gameTime == cachedInventoryGameTime
+            && storageRevision == cachedInventoryStorageRevision) {
+            return copyInventory(cachedInventory);
         }
-        return result;
+        Map<String, MutableCost> fresh = playerInventory();
+        cachedInventoryMenu = menu;
+        cachedInventoryGameTime = gameTime;
+        cachedInventoryStorageRevision = storageRevision;
+        cachedInventory = freezeInventory(fresh);
+        Map<String, Long> amounts = new LinkedHashMap<>();
+        for (Map.Entry<String, MutableCost> entry : cachedInventory.entrySet()) {
+            amounts.put(entry.getKey(), entry.getValue().amount);
+        }
+        cachedInventoryAmounts = Map.copyOf(amounts);
+        return copyInventory(cachedInventory);
+    }
+
+    private static Map<String, MutableCost> freezeInventory(Map<String, MutableCost> source) {
+        if (source.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, MutableCost> frozen = new LinkedHashMap<>();
+        for (Map.Entry<String, MutableCost> entry : source.entrySet()) {
+            MutableCost value = entry.getValue();
+            frozen.put(entry.getKey(), new MutableCost(value.stack, value.alternatives, value.amount));
+        }
+        return Map.copyOf(frozen);
+    }
+
+    private static Map<String, MutableCost> copyInventory(Map<String, MutableCost> source) {
+        if (source.isEmpty()) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, MutableCost> copy = new LinkedHashMap<>();
+        for (Map.Entry<String, MutableCost> entry : source.entrySet()) {
+            MutableCost value = entry.getValue();
+            copy.put(entry.getKey(), new MutableCost(value.stack, value.alternatives, value.amount));
+        }
+        return copy;
+    }
+
+    /** Immutable amount view used by bookmark refreshes without rescanning storage. */
+    public static Map<String, Long> inventoryAmounts() {
+        inventorySnapshot();
+        return cachedInventoryAmounts;
+    }
+
+    public static long inventoryAmount(Collection<ItemStack> alternatives, Map<String, Long> amounts) {
+        if (alternatives == null || alternatives.isEmpty() || amounts == null || amounts.isEmpty()) {
+            return 0L;
+        }
+        long total = 0L;
+        Set<String> keys = new HashSet<>();
+        for (ItemStack alternative : alternatives) {
+            if (alternative != null && !alternative.isEmpty()) {
+                keys.add(ingredientKey(alternative));
+            }
+        }
+        for (String key : keys) {
+            total = safeAdd(total, amounts.getOrDefault(key, 0L));
+        }
+        return total;
+    }
+
+    private static long inventoryAmountFromCosts(Collection<ItemStack> alternatives, Map<String, MutableCost> inventory) {
+        if (alternatives == null || alternatives.isEmpty() || inventory == null || inventory.isEmpty()) {
+            return 0L;
+        }
+        long total = 0L;
+        Set<String> keys = new HashSet<>();
+        for (ItemStack alternative : alternatives) {
+            if (alternative != null && !alternative.isEmpty()) {
+                keys.add(ingredientKey(alternative));
+            }
+        }
+        for (String key : keys) {
+            MutableCost value = inventory.get(key);
+            if (value != null) {
+                total = safeAdd(total, value.amount);
+            }
+        }
+        return total;
+    }
+
+    private static Map<String, Long> playerInventoryAmounts() {
+        return inventoryAmounts();
     }
 
     private static CandidateContext candidateContext() {
@@ -1334,7 +1505,8 @@ public final class RecipeTreeData {
         CandidateContext resolvedContext = context == null ? candidateContext() : context;
         Map<String, Long> available = resolvedContext.available;
         for (ItemStack candidate : valid) {
-            if (availableAmount(available, ingredientKey(candidate)) > 0) {
+            if (availableAmount(available, ingredientKey(candidate))
+                >= requiredMapAmount(candidate)) {
                 return Optional.of(copyStack(candidate));
             }
         }
@@ -1411,7 +1583,7 @@ public final class RecipeTreeData {
         if (bookmarkedKeys != null && bookmarkedKeys.contains(key)) {
             return true;
         }
-        long required = Math.max(1L, wanted.getCount());
+        long required = requiredMapAmount(wanted);
         long present = availableAmount(available, key);
         if (present >= required) {
             setAvailable(available, key, present - required);
@@ -1432,7 +1604,7 @@ public final class RecipeTreeData {
             if (recipe == null || !recipe.produces(key) || recipe.inputs().isEmpty()) {
                 continue;
             }
-            long crafts = ceilDiv(missing, recipe.outputAmount(key));
+            long crafts = ceilDiv(missing, recipeOutputSupplyAmount(recipe, key));
             if (crafts <= 0) {
                 continue;
             }
@@ -1496,6 +1668,18 @@ public final class RecipeTreeData {
         return copy;
     }
 
+    private static long recipeOutputSupplyAmount(RecipeSnapshot recipe, String key) {
+        if (recipe == null) {
+            return 1L;
+        }
+        for (ItemStack output : recipe.outputs()) {
+            if (ingredientKey(output).equals(key)) {
+                return Math.max(1L, mapAmount(output, output.getCount()));
+            }
+        }
+        return 1L;
+    }
+
     private static long availableAmount(Map<String, Long> available, String key) {
         return available.getOrDefault(key, 0L);
     }
@@ -1514,7 +1698,19 @@ public final class RecipeTreeData {
             return;
         }
         String key = ingredientKey(stack);
-        setAvailable(available, key, safeAdd(availableAmount(available, key), amount));
+        setAvailable(available, key, safeAdd(
+            availableAmount(available, key),
+            mapAmount(stack, amount)
+        ));
+        if (FluidRecipeCompat.fluidKey(stack).isEmpty()) {
+            FluidRecipeCompat.fluidRepresentation(stack).ifPresent(fluid -> {
+                String fluidKey = ingredientKey(fluid);
+                setAvailable(available, fluidKey, safeAdd(
+                    availableAmount(available, fluidKey),
+                    mapAmount(fluid, amount)
+                ));
+            });
+        }
     }
 
     private static void consumeAvailable(Map<String, Long> available, String key, long amount) {
@@ -1553,6 +1749,33 @@ public final class RecipeTreeData {
         }
     }
 
+    /** Adds inventory/planner supply using mB for fluids and units for items. */
+    private static void addSupply(Map<String, MutableCost> map, ItemStack stack, long units) {
+        add(map, stack, mapAmount(stack, units));
+        // A filled container can satisfy a fluid ingredient as well as an
+        // explicit bucket ingredient. Keep both keys in the planning map so
+        // fluid candidates recurse through inventory/network containers.
+        if (FluidRecipeCompat.fluidKey(stack).isEmpty()) {
+            FluidRecipeCompat.fluidRepresentation(stack).ifPresent(fluid ->
+                add(map, fluid, mapAmount(fluid, units))
+            );
+        }
+    }
+
+    private static long mapAmount(ItemStack stack, long units) {
+        if (stack == null || stack.isEmpty() || units <= 0) {
+            return 0L;
+        }
+        if (FluidRecipeCompat.treeFluid(stack).isPresent()) {
+            return FluidRecipeCompat.amountForUnits(stack, units);
+        }
+        return units;
+    }
+
+    private static long requiredMapAmount(ItemStack stack) {
+        return mapAmount(stack, Math.max(1L, stack == null ? 1L : stack.getCount()));
+    }
+
     private static void addCost(Map<String, MutableCost> map, Node node, long amount) {
         if (node == null || amount <= 0) {
             return;
@@ -1577,6 +1800,12 @@ public final class RecipeTreeData {
     private static long consumeForNode(Map<String, MutableCost> map, Node node, long desired) {
         if (node == null || desired <= 0) {
             return desired;
+        }
+        if (FluidRecipeCompat.treeFluid(node.stack).isPresent()) {
+            long perUnit = Math.max(1L, FluidRecipeCompat.amountForUnits(node.stack, 1));
+            long desiredAmount = mapAmount(node.stack, desired);
+            long remainingAmount = consume(map, node.ingredientKey, desiredAmount);
+            return remainingAmount <= 0 ? 0 : ceilDiv(remainingAmount, perUnit);
         }
         long remaining = consume(map, node.ingredientKey, desired);
         if (!node.explicitChoice && remaining > 0) {
@@ -1607,48 +1836,14 @@ public final class RecipeTreeData {
     }
 
     public static long inventoryAmount(ItemStack wanted) {
-        var player = net.minecraft.client.Minecraft.getInstance().player;
-        if (player == null || wanted == null || wanted.isEmpty()) {
-            return 0;
+        if (wanted == null || wanted.isEmpty()) {
+            return 0L;
         }
-        String key = ingredientKey(wanted);
-        long amount = 0;
-        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
-            ItemStack present = player.getInventory().getItem(slot);
-            if (!present.isEmpty() && ingredientKey(present).equals(key)) {
-                amount = safeAdd(amount, present.getCount());
-            }
-        }
-        for (StorageNetworkIntegration.StoredStack stored : StorageNetworkIntegration.storedStacks()) {
-            if (ingredientKey(stored.stack()).equals(key)) {
-                amount = safeAdd(amount, stored.amount());
-            }
-        }
-        return amount;
+        return inventoryAmounts().getOrDefault(ingredientKey(wanted), 0L);
     }
 
     public static long inventoryAmount(Collection<ItemStack> alternatives) {
-        var player = net.minecraft.client.Minecraft.getInstance().player;
-        if (player == null || alternatives == null || alternatives.isEmpty()) {
-            return 0;
-        }
-        Set<String> keys = alternatives.stream()
-            .filter(stack -> stack != null && !stack.isEmpty())
-            .map(RecipeTreeData::ingredientKey)
-            .collect(java.util.stream.Collectors.toSet());
-        long amount = 0;
-        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
-            ItemStack present = player.getInventory().getItem(slot);
-            if (!present.isEmpty() && keys.contains(ingredientKey(present))) {
-                amount = safeAdd(amount, present.getCount());
-            }
-        }
-        for (StorageNetworkIntegration.StoredStack stored : StorageNetworkIntegration.storedStacks()) {
-            if (keys.contains(ingredientKey(stored.stack()))) {
-                amount = safeAdd(amount, stored.amount());
-            }
-        }
-        return amount;
+        return inventoryAmount(alternatives, inventoryAmounts());
     }
 
     private static long ceilDiv(long value, long divisor) {
