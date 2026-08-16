@@ -25,6 +25,12 @@
     "IngredientGridWithNavigationMixin",
     "IngredientGridWithNavigationModernMixin",
     "IntegratedTerminalScreenMixin",
+    "Ae2RepoMixin",
+    "RefinedStorageGridViewMixin",
+    "RefinedStorageRepositoryMixin",
+    "BeyondDimensionsNetMenuMixin",
+    "IntegratedTerminalStorageMixin",
+    "IntegratedTerminalMenuMixin",
     "AbstractContainerScreenMixin"
   ],
   "injectors": {

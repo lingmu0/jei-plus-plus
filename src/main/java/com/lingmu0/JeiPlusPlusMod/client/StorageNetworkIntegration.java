@@ -49,6 +49,9 @@ final class StorageNetworkIntegration {
     private static volatile Object prioritizedMenu;
     private static volatile Set<String> prioritizedKeys = Set.of();
     private static volatile long prioritizedSnapshotRevision = Long.MIN_VALUE;
+    /** A partition requested by a tree refresh, applied before the next draw. */
+    private static volatile Set<String> pendingPrioritizedKeys = Set.of();
+    private static volatile boolean priorityPending;
 
     private StorageNetworkIntegration() {
     }
@@ -68,6 +71,8 @@ final class StorageNetworkIntegration {
             prioritizedMenu = null;
             prioritizedKeys = Set.of();
             prioritizedSnapshotRevision = Long.MIN_VALUE;
+            pendingPrioritizedKeys = Set.of();
+            priorityPending = false;
             return List.of();
         }
         Minecraft minecraft = Minecraft.getInstance();
@@ -224,6 +229,23 @@ final class StorageNetworkIntegration {
             return Long.MAX_VALUE;
         }
         return Math.max(0L, left + right);
+    }
+
+    /** Queues a stable network-list partition for the next pre-render pass. */
+    static void queueVisibleEntries(Set<String> keys) {
+        pendingPrioritizedKeys = keys == null || keys.isEmpty() ? Set.of() : Set.copyOf(keys);
+        priorityPending = true;
+    }
+
+    /** Applies the queued partition before the terminal draws its native view. */
+    static void applyPendingVisibleEntries() {
+        if (!priorityPending) {
+            return;
+        }
+        Set<String> keys = pendingPrioritizedKeys;
+        priorityPending = false;
+        pendingPrioritizedKeys = Set.of();
+        prioritizeVisibleEntries(keys);
     }
 
     /** Moves network-backed entries ahead of ordinary entries where the mod exposes a mutable view. */
