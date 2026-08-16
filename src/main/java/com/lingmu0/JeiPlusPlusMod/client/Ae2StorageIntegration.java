@@ -14,6 +14,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -58,6 +59,7 @@ final class Ae2StorageIntegration {
     private static volatile long cachedGameTime = Long.MIN_VALUE;
     private static volatile long cachedAtNanos = Long.MIN_VALUE;
     private static volatile List<StoredStack> cachedStacks = List.of();
+    private static volatile List<StorageNetworkIntegration.StoredFluid> cachedFluids = List.of();
     private static volatile Object prioritizedRepo;
     private static volatile boolean repoWasPrioritized;
 
@@ -74,6 +76,7 @@ final class Ae2StorageIntegration {
             cachedGameTime = gameTime;
             cachedAtNanos = now;
             cachedStacks = List.of();
+            cachedFluids = List.of();
             return List.of();
         }
 
@@ -86,14 +89,36 @@ final class Ae2StorageIntegration {
             return previous;
         }
 
-        List<StoredStack> result = query(menu);
+        Object sharedClientEntries = clientEntries(menu);
+        List<StoredStack> result;
+        List<StorageNetworkIntegration.StoredFluid> fluids;
+        if (sharedClientEntries instanceof Iterable<?> entries) {
+            try {
+                Class<?> itemKeyType = Class.forName(ITEM_KEY);
+                RepositorySnapshot snapshot = readEntriesAndFluids(entries, itemKeyType);
+                result = snapshot.stacks();
+                fluids = snapshot.fluids();
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+                result = List.of();
+                fluids = List.of();
+            }
+        } else {
+            result = query(menu);
+            fluids = queryFluids(menu);
+        }
         synchronized (Ae2StorageIntegration.class) {
             cachedMenu = menu;
             cachedGameTime = gameTime;
             cachedAtNanos = now;
             cachedStacks = List.copyOf(result);
+            cachedFluids = List.copyOf(fluids);
             return cachedStacks;
         }
+    }
+
+    static List<StorageNetworkIntegration.StoredFluid> storedFluids() {
+        storedStacks();
+        return cachedFluids;
     }
 
     /** Returns the menu currently backed by the player's screen/container. */
@@ -457,6 +482,107 @@ final class Ae2StorageIntegration {
         }
     }
 
+    private static Object clientEntries(Object menu) {
+        try {
+            Object clientRepo = invokeNoArg(menu, "getClientRepo");
+            return clientRepo == null ? null : invokeNoArg(clientRepo, "getAllEntries");
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return null;
+        }
+    }
+
+    private static List<StorageNetworkIntegration.StoredFluid> queryFluids(Object menu) {
+        try {
+            Object networkNode = invokeNoArg(menu, "getNetworkNode");
+            Class<?> nodeType = Class.forName(GRID_NODE);
+            if (networkNode == null || !nodeType.isInstance(networkNode)) {
+                return List.of();
+            }
+            Object grid = invokeNoArg(networkNode, "getGrid");
+            Object storageService = invokeNoArg(grid, "getStorageService");
+            if (storageService == null) {
+                return List.of();
+            }
+            Object cachedInventory = invokeNoArg(storageService, "getCachedInventory");
+            List<StorageNetworkIntegration.StoredFluid> result = readFluidEntries(cachedInventory, "getKey", "getLongValue");
+            if (!result.isEmpty()) {
+                return result;
+            }
+            for (String accessor : List.of("getCachedFluidInventory", "getFluidInventory", "getCachedFluids")) {
+                Object fluidInventory = invokeNoArg(storageService, accessor);
+                result = readFluidEntries(fluidInventory, "getKey", "getLongValue");
+                if (!result.isEmpty()) {
+                    return result;
+                }
+            }
+            return List.of();
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return List.of();
+        }
+    }
+
+    /** Reads AE2's mixed item/fluid repository once instead of walking it once
+     * for items and a second time for fluids. Large networks commonly expose
+     * thousands of entries, so keeping this pass linear is important while a
+     * recipe tree is refreshing. */
+    private static RepositorySnapshot readEntriesAndFluids(
+        Iterable<?> entries,
+        Class<?> itemKeyType
+    ) throws ReflectiveOperationException {
+        List<StoredStack> stacks = new ArrayList<>();
+        List<StorageNetworkIntegration.StoredFluid> fluids = new ArrayList<>();
+        for (Object entry : entries) {
+            Object key = invokeNoArg(entry, "getWhat");
+            if (key == null) {
+                key = invokeNoArg(entry, "getKey");
+            }
+            if (key == null) {
+                continue;
+            }
+            long amount = entryAmount(entry, "getStoredAmount");
+            if (amount <= 0) {
+                continue;
+            }
+            if (itemKeyType.isInstance(key)) {
+                ItemStack stack = stackFromAeKey(key);
+                if (!stack.isEmpty()) {
+                    ItemStack representative = stack.copy();
+                    representative.setCount(1);
+                    stacks.add(new StoredStack(representative, amount));
+                }
+                continue;
+            }
+            Optional<FluidRecipeCompat.FluidInfo> info = FluidRecipeCompat.describeFluid(key);
+            if (info.isPresent()) {
+                long fluidAmount = Math.max(amount, info.get().amount());
+                if (fluidAmount > 0) {
+                    fluids.add(new StorageNetworkIntegration.StoredFluid(info.get().key(), fluidAmount));
+                }
+            }
+        }
+        return new RepositorySnapshot(List.copyOf(stacks), List.copyOf(fluids));
+    }
+
+    private static long entryAmount(Object entry, String preferredMethod) throws ReflectiveOperationException {
+        long amount = numberValue(invokeNoArg(entry, preferredMethod));
+        if (amount > 0) {
+            return amount;
+        }
+        for (String method : List.of("getStoredAmount", "getAmount", "getLongValue", "getValue")) {
+            amount = numberValue(invokeNoArg(entry, method));
+            if (amount > 0) {
+                return amount;
+            }
+        }
+        return 0L;
+    }
+
+    private record RepositorySnapshot(
+        List<StoredStack> stacks,
+        List<StorageNetworkIntegration.StoredFluid> fluids
+    ) {
+    }
+
     private static List<StoredStack> readEntries(
         Iterable<?> entries,
         Class<?> itemKeyType,
@@ -504,6 +630,46 @@ final class Ae2StorageIntegration {
                 result.add(new StoredStack(representative, amount));
             }
             return result;
+    }
+
+    private static List<StorageNetworkIntegration.StoredFluid> readFluidEntries(
+        Object source,
+        String keyMethod,
+        String amountMethod
+    ) throws ReflectiveOperationException {
+        if (!(source instanceof Iterable<?> entries)) {
+            return List.of();
+        }
+        List<StorageNetworkIntegration.StoredFluid> result = new ArrayList<>();
+        for (Object entry : entries) {
+            Object key = invokeNoArg(entry, keyMethod);
+            if (key == null) {
+                key = invokeNoArg(entry, "getWhat");
+            }
+            if (key == null) {
+                key = invokeNoArg(entry, "getKey");
+            }
+            Optional<FluidRecipeCompat.FluidInfo> info = FluidRecipeCompat.describeFluid(key);
+            if (info.isEmpty()) {
+                continue;
+            }
+            long amount = numberValue(invokeNoArg(entry, amountMethod));
+            if (amount <= 0) {
+                for (String method : List.of("getStoredAmount", "getAmount", "getLongValue", "getValue")) {
+                    amount = numberValue(invokeNoArg(entry, method));
+                    if (amount > 0) {
+                        break;
+                    }
+                }
+            }
+            if (info.get().amount() > 0) {
+                amount = Math.max(amount, info.get().amount());
+            }
+            if (amount > 0) {
+                result.add(new StorageNetworkIntegration.StoredFluid(info.get().key(), amount));
+            }
+        }
+        return result;
     }
 
     private static long numberValue(Object value) {
@@ -563,9 +729,13 @@ final class Ae2StorageIntegration {
         }
         Object key = invokeNoArgQuietly(entry, "getWhat");
         ItemStack stack = stackFromAeKey(key);
-        return stack != null
-            && !stack.isEmpty()
-            && keys.contains(RecipeTreeData.ingredientKey(stack));
+        if (stack != null && !stack.isEmpty()
+            && StorageNetworkIntegration.matchesHighlightKey(stack, keys)) {
+            return true;
+        }
+        return FluidRecipeCompat.describeFluid(key)
+            .map(info -> keys.contains(info.key()))
+            .orElse(false);
     }
 
     private static ItemStack stackFromAeKey(Object key) {

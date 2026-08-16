@@ -33,6 +33,8 @@ public final class RecipeTreeScreen extends Screen {
     private static final int RECIPE_NODE_WIDTH = 44;
     private static final int LEAF_NODE_WIDTH = 18;
     private static final int NODE_HEIGHT = 22;
+    /** The transfer marker uses the same 7x7 glyph as the candidate marker. */
+    private static final int TRANSFER_BUTTON_SIZE = 7;
     private static final int X_SPACING = 54;
     private static final int Y_SPACING = 44;
     private static final int COST_SPACING = 8;
@@ -187,7 +189,8 @@ public final class RecipeTreeScreen extends Screen {
             String amount = costText(cost, leftover);
             RenderCost renderCost = new RenderCost(cost, x, y, leftover);
             row.add(renderCost);
-            x += 16 + COST_SPACING + Math.max(0, font.width(amount) - 8);
+            int amountWidth = Math.min(16, font.width(amount));
+            x += 16 + COST_SPACING + Math.max(0, amountWidth - 8);
         }
         int offset = row.isEmpty() ? 0 : (x - COST_SPACING) / 2;
         for (RenderCost cost : row) {
@@ -229,7 +232,8 @@ public final class RecipeTreeScreen extends Screen {
         }
         for (RenderCost cost : costs) {
             String text = costText(cost.cost, cost.leftover);
-            minX = Math.min(minX, cost.x + 17 - font.width(text));
+            int textWidth = Math.min(16, font.width(text));
+            minX = Math.min(minX, cost.x + 17 - textWidth);
             maxX = Math.max(maxX, cost.x + 17);
             minY = Math.min(minY, cost.y);
             maxY = Math.max(maxY, cost.y + 16);
@@ -441,9 +445,12 @@ public final class RecipeTreeScreen extends Screen {
         if (!FluidRecipeCompat.render(graphics, renderStack, itemX, itemY)) {
             graphics.renderItem(renderStack, itemX, itemY);
         }
-        drawAmount(graphics, formatNodeAmount(node.amount()), itemX, itemY, amountColor(node));
+        drawAmount(graphics, formatNodeAmount(node.stack(), node.amount()), itemX, itemY, amountColor(node));
         if (node.hasAlternatives()) {
             drawAlternativeMarker(graphics, node, itemX, itemY);
+        }
+        if (node.recipe() != null) {
+            drawTransferButton(graphics, node, left, top, mouseX, mouseY);
         }
 
         if (node.recipe() != null && !node.children().isEmpty()) {
@@ -456,12 +463,33 @@ public final class RecipeTreeScreen extends Screen {
         int x = itemX + 10;
         int y = itemY - 2;
         int color = node.explicitChoice() ? 0xFF55FFAA : 0xFF80A8FF;
+        drawPlusMarker(graphics, x, y, color);
+    }
+
+    /** Draws the small plus glyph used by both candidate and transfer actions. */
+    private void drawPlusMarker(GuiGraphics graphics, int x, int y, int color) {
         graphics.pose().pushPose();
         graphics.pose().translate(0, 0, 400);
         graphics.fill(x, y, x + 7, y + 7, 0xE0202020);
         graphics.fill(x + 1, y + 3, x + 6, y + 4, color);
         graphics.fill(x + 3, y + 1, x + 4, y + 6, color);
         graphics.pose().popPose();
+    }
+
+    private void drawTransferButton(
+        GuiGraphics graphics,
+        RecipeTreeData.Node node,
+        int left,
+        int top,
+        int mouseX,
+        int mouseY
+    ) {
+        // The transfer action belongs to the work-block/category icon, not
+        // to the output item area on the right side of the recipe node.
+        int x = left + 2 + 18 - TRANSFER_BUTTON_SIZE - 1;
+        int y = top + 2 + 18 - TRANSFER_BUTTON_SIZE - 1;
+        // Keep this visually identical to the candidate-selection marker.
+        drawPlusMarker(graphics, x, y, 0xFF80A8FF);
     }
 
     private void drawCategoryFallback(GuiGraphics graphics, int x, int y, int color) {
@@ -513,9 +541,12 @@ public final class RecipeTreeScreen extends Screen {
         if (text.isEmpty()) {
             return;
         }
+        int textWidth = Math.max(1, font.width(text));
+        float scale = Math.min(1.0f, 16.0f / textWidth);
         graphics.pose().pushPose();
-        graphics.pose().translate(0, 0, 300);
-        graphics.drawString(font, text, itemX + 17 - font.width(text), itemY + 9, color, true);
+        graphics.pose().translate(itemX + 17, itemY + 9, 300);
+        graphics.pose().scale(scale, scale, 1.0f);
+        graphics.drawString(font, text, -textWidth, 0, color, true);
         graphics.pose().popPose();
     }
 
@@ -549,7 +580,14 @@ public final class RecipeTreeScreen extends Screen {
         }
         RecipeTreeData.Node node = hoveredNode(mouseX, mouseY);
         if (node != null) {
-            if (node.isOutputChoice() && isAlternativeArea(node, mouseX, mouseY)) {
+            if (isTransferArea(node, mouseX, mouseY)) {
+                graphics.renderTooltip(
+                    font,
+                    Component.translatable("jei_plus_plus.recipe_tree.transfer"),
+                    mouseX,
+                    mouseY
+                );
+            } else if (node.isOutputChoice() && isAlternativeArea(node, mouseX, mouseY)) {
                 graphics.renderTooltip(
                     font,
                     Component.translatable("jei_plus_plus.recipe_tree.output_choice", node.alternatives().size()),
@@ -704,6 +742,19 @@ public final class RecipeTreeScreen extends Screen {
         return containsTreeArea(point[0], point[1], itemX + 10, itemY - 2, 7, 7);
     }
 
+    private boolean isTransferArea(RecipeTreeData.Node node, double mouseX, double mouseY) {
+        if (node == null || node.recipe() == null) {
+            return false;
+        }
+        int[] point = treeMouse(mouseX, mouseY);
+        int width = nodeWidth(node);
+        int left = node.x() - width / 2;
+        int top = node.y() - NODE_HEIGHT / 2;
+        int x = left + 2 + 18 - TRANSFER_BUTTON_SIZE - 1;
+        int y = top + 2 + 18 - TRANSFER_BUTTON_SIZE - 1;
+        return containsTreeArea(point[0], point[1], x, y, TRANSFER_BUTTON_SIZE, TRANSFER_BUTTON_SIZE);
+    }
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         // JEI draws the global tree toggle on top of this screen.  The normal
@@ -733,6 +784,7 @@ public final class RecipeTreeScreen extends Screen {
         }
         if (tree != null && containsTreeArea(point[0], point[1], batchX, batchY, batchWidth, 22)) {
             tree.setBatches(tree.idealBatch());
+            RecipeTreeSession.savePersistentState();
             rebuildLayout(false);
             RecipeTreeFavorites.refreshNow();
             return true;
@@ -740,6 +792,19 @@ public final class RecipeTreeScreen extends Screen {
 
         RecipeTreeData.Node node = hoveredNode(mouseX, mouseY);
         if (node != null) {
+            if (button == 0 && isTransferArea(node, mouseX, mouseY)) {
+                boolean maxTransfer = hasShiftDown();
+                tree.directTransferStep(node).ifPresent(step -> {
+                    RecipeTreeTransfer.transfer(step, false, maxTransfer);
+                });
+                // JEI closes its recipe GUI after pressing +. Keep the same
+                // behavior even when the node has no transferable inputs or
+                // the handler reports an error.
+                if (Minecraft.getInstance().screen == this) {
+                    onClose();
+                }
+                return true;
+            }
             if (isAlternativeArea(node, mouseX, mouseY)) {
                 if (button == 0) {
                     chooseInput(node);
@@ -989,6 +1054,7 @@ public final class RecipeTreeScreen extends Screen {
                 }
             }
             tree.setBatches(tree.batches() + adjustment);
+            RecipeTreeSession.savePersistentState();
             rebuildLayout(false);
             RecipeTreeFavorites.refreshNow();
             return true;
@@ -1090,22 +1156,41 @@ public final class RecipeTreeScreen extends Screen {
         if (tree == null || !tree.craftingMode()) {
             return 0xFFFFFFFF;
         }
-        return cost.supplied() >= cost.required() ? 0xFF55FFAA : 0xFFFF5555;
+        boolean fluid = FluidRecipeCompat.treeFluid(cost.stack()).isPresent();
+        long required = fluid
+            ? FluidRecipeCompat.amountForUnits(cost.stack(), cost.required())
+            : cost.required();
+        return cost.supplied() >= required ? 0xFF55FFAA : 0xFFFF5555;
     }
 
     private static String costText(RecipeTreeData.Cost cost, boolean leftover) {
         RecipeTreeData.Tree tree = RecipeTreeSession.tree();
+        boolean fluid = FluidRecipeCompat.treeFluid(cost.stack()).isPresent();
         if (!leftover && tree != null && tree.craftingMode()) {
-            return formatNumber(cost.supplied()) + "/" + formatNumber(cost.required());
+            String supplied = fluid
+                ? FluidRecipeCompat.formatAmount(cost.supplied())
+                : quantityText(cost.stack(), cost.supplied(), false);
+            return supplied
+                + "/" + quantityText(cost.stack(), cost.required(), fluid);
         }
-        return cost.required() == 1 ? "" : formatNumber(cost.required());
+        return !fluid && cost.required() == 1
+            ? ""
+            : quantityText(cost.stack(), cost.required(), fluid);
     }
 
-    private static String formatNodeAmount(long amount) {
-        if (amount == 1) {
+    private static String formatNodeAmount(ItemStack stack, long amount) {
+        boolean fluid = FluidRecipeCompat.treeFluid(stack).isPresent();
+        if (!fluid && amount == 1) {
             return "";
         }
-        return formatNumber(amount);
+        return quantityText(stack, amount, fluid);
+    }
+
+    private static String quantityText(ItemStack stack, long units, boolean fluid) {
+        if (fluid) {
+            return FluidRecipeCompat.formatAmount(FluidRecipeCompat.amountForUnits(stack, units));
+        }
+        return formatNumber(units);
     }
 
     private static String formatNumber(long amount) {

@@ -10,29 +10,112 @@ import mezz.jei.api.runtime.IIngredientManager;
 import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.TooltipFlag;
+import net.minecraft.world.level.material.Fluid;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fluids.capability.IFluidHandler;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.IdentityHashMap;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /** Client-side bridge between JEI fluid ingredients and filled item containers. */
 final class FluidRecipeCompat {
     private static final IdentityHashMap<ItemStack, FluidStack> DISPLAY_FLUIDS = new IdentityHashMap<>();
+    private static final Map<String, ItemStack> FLUID_REPRESENTATIONS = new ConcurrentHashMap<>();
+    private static final List<String> FLUID_ACCESSOR_NAMES = List.of(
+        "getFluidStack", "getReadOnlyStack", "getRenderStack", "getStack",
+        "toFluidStack", "toStack", "getInstance", "getIngredient", "getResource",
+        "getFluidResource", "getFluid", "fluid", "getWhat", "getKey", "getSource"
+    );
+    private static final Map<Class<?>, List<Method>> FLUID_ACCESSORS = new ConcurrentHashMap<>();
 
     private FluidRecipeCompat() {
     }
 
+    /** A loader-neutral description of a fluid value returned by an optional storage API. */
+    record FluidInfo(String key, long amount) {
+    }
+
+    /** Reflectively unwraps optional AE/RS/Beyond/Integrated fluid wrappers. */
+    static Optional<FluidInfo> describeFluid(Object value) {
+        return describeFluid(value, Collections.newSetFromMap(new IdentityHashMap<>()), 0);
+    }
+
+    private static Optional<FluidInfo> describeFluid(Object value, Set<Object> seen, int depth) {
+        if (value == null || depth > 4 || !seen.add(value)) {
+            return Optional.empty();
+        }
+        if (value instanceof FluidStack stack) {
+            if (stack.isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.of(new FluidInfo(
+                "fluid:" + BuiltInRegistries.FLUID.getKey(stack.getFluid()),
+                Math.max(0L, stack.getAmount())
+            ));
+        }
+        if (value instanceof ItemStack stack) {
+            return displayFluid(stack).map(fluid -> new FluidInfo(
+                "fluid:" + BuiltInRegistries.FLUID.getKey(fluid.getFluid()),
+                Math.max(0L, fluid.getAmount())
+            ));
+        }
+        if (value instanceof Fluid fluid) {
+            return Optional.of(new FluidInfo(
+                "fluid:" + BuiltInRegistries.FLUID.getKey(fluid),
+                0L
+            ));
+        }
+        for (Method method : FLUID_ACCESSORS.computeIfAbsent(value.getClass(), FluidRecipeCompat::findFluidAccessors)) {
+            try {
+                Optional<FluidInfo> result = describeFluid(method.invoke(value), seen, depth + 1);
+                if (result.isPresent()) {
+                    return result;
+                }
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+                // Try the next optional accessor.
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static List<Method> findFluidAccessors(Class<?> type) {
+        List<Method> methods = new ArrayList<>();
+        for (String name : FLUID_ACCESSOR_NAMES) {
+            try {
+                Method method = type.getMethod(name);
+                try {
+                    method.trySetAccessible();
+                } catch (RuntimeException ignored) {
+                    // Public methods remain invokable when access is restricted.
+                }
+                methods.add(method);
+            } catch (NoSuchMethodException | SecurityException ignored) {
+                // Optional wrapper API; try the next accessor.
+            }
+        }
+        return List.copyOf(methods);
+    }
+
     static void clear() {
         DISPLAY_FLUIDS.clear();
+        FLUID_REPRESENTATIONS.clear();
+        FLUID_ACCESSORS.clear();
     }
 
     static Optional<FluidStack> fluid(ITypedIngredient<?> ingredient) {
@@ -56,7 +139,7 @@ final class FluidRecipeCompat {
         }
         FluidStack copy = value.get().copy();
         copy.setAmount((int) amount);
-        return manager.createTypedIngredient(ForgeTypes.FLUID_STACK, copy, false)
+        return manager.createTypedIngredient(ForgeTypes.FLUID_STACK, copy)
             .map(stack -> (ITypedIngredient<?>) stack);
     }
 
@@ -83,7 +166,6 @@ final class FluidRecipeCompat {
             if (containers <= inventoryStack.getCount()) {
                 ItemStack candidate = inventoryStack.copy();
                 candidate.setCount(containers);
-                registerDisplay(candidate, required);
                 return List.of(candidate);
             }
         }
@@ -109,6 +191,18 @@ final class FluidRecipeCompat {
         }).filter(stack -> !stack.isEmpty());
     }
 
+    /** A real bucket/item candidate for a fluid ingredient. It deliberately
+     * has no display registration, so its ingredient key remains the bucket
+     * item rather than the synthetic fluid key. */
+    static Optional<ItemStack> containerCandidate(ITypedIngredient<?> ingredient) {
+        return fluid(ingredient).map(value -> {
+            var bucketItem = value.getFluid().getBucket();
+            ItemStack bucket = new ItemStack(bucketItem == Items.AIR ? Items.BUCKET : bucketItem);
+            bucket.setCount((int) Math.min(Integer.MAX_VALUE, containerCount(value.getAmount())));
+            return bucket;
+        }).filter(stack -> !stack.isEmpty());
+    }
+
     private static void registerDisplay(ItemStack stack, FluidStack fluid) {
         if (stack == null || stack.isEmpty() || fluid == null || fluid.isEmpty()) {
             return;
@@ -124,7 +218,17 @@ final class FluidRecipeCompat {
         if (fluid != null) {
             return Optional.of(fluid.copy());
         }
-        IFluidHandler handler = stack.getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM)
+        // Forge fluid handlers are commonly implemented for a single item.
+        // Passing a stack with count > 1 can make the capability return an
+        // empty handler even though every item carries the same fluid. Probe a
+        // one-item copy for identity/highlight checks; callers that need the
+        // total amount multiply the returned amount by the original count.
+        ItemStack probe = stack;
+        if (stack.getCount() > 1) {
+            probe = stack.copy();
+            probe.setCount(1);
+        }
+        IFluidHandler handler = probe.getCapability(ForgeCapabilities.FLUID_HANDLER_ITEM)
             .resolve().orElse(null);
         if (handler != null) {
             FluidStack contained = handler.drain(Integer.MAX_VALUE, IFluidHandler.FluidAction.SIMULATE);
@@ -135,27 +239,106 @@ final class FluidRecipeCompat {
         return Optional.empty();
     }
 
+    /** Fluid explicitly represented by a recipe-tree synthetic stack. */
+    static Optional<FluidStack> treeFluid(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return Optional.empty();
+        }
+        FluidStack fluid = DISPLAY_FLUIDS.get(stack);
+        return fluid == null ? Optional.empty() : Optional.of(fluid.copy());
+    }
+
     static Optional<String> fluidKey(ItemStack stack) {
+        return treeFluid(stack).map(value -> fluidKey(value));
+    }
+
+    static String fluidKey(FluidStack value) {
+        return value == null || value.isEmpty()
+            ? ""
+            : "fluid:" + net.minecraft.core.registries.BuiltInRegistries.FLUID.getKey(value.getFluid());
+    }
+
+    /** Returns the fluid key carried by a real container without converting it
+     * into a synthetic tree stack. Used by inventory highlighting only. */
+    static Optional<String> displayFluidKey(ItemStack stack) {
         return displayFluid(stack)
-            .map(value -> "fluid:" + net.minecraft.core.registries.BuiltInRegistries.FLUID.getKey(value.getFluid()));
+            .map(FluidRecipeCompat::fluidKey)
+            .filter(key -> !key.isEmpty());
+    }
+
+    /** Creates a fluid-key alias for a real filled container in inventory. */
+    static Optional<ItemStack> fluidRepresentation(ItemStack stack) {
+        Optional<FluidStack> value = displayFluid(stack);
+        if (value.isEmpty() || fluidKey(stack).isPresent()) {
+            return Optional.empty();
+        }
+        return Optional.of(cachedRepresentation(value.get()));
     }
 
     static Optional<ITypedIngredient<?>> toTyped(IIngredientManager manager, ItemStack stack) {
         if (manager == null || stack == null || stack.isEmpty()) {
             return Optional.empty();
         }
-        Optional<FluidStack> fluid = displayFluid(stack);
+        Optional<FluidStack> fluid = treeFluid(stack);
         if (fluid.isPresent()) {
-            return manager.createTypedIngredient(ForgeTypes.FLUID_STACK, fluid.get(), false)
+            return manager.createTypedIngredient(ForgeTypes.FLUID_STACK, fluid.get())
                 .map(value -> (ITypedIngredient<?>) value);
         }
-        return manager.createTypedIngredient(VanillaTypes.ITEM_STACK, stack, false)
+        return manager.createTypedIngredient(VanillaTypes.ITEM_STACK, stack)
             .map(value -> (ITypedIngredient<?>) value);
     }
 
     static long containerCount(long millibuckets) {
         return Math.max(1, (millibuckets + net.minecraftforge.fluids.FluidType.BUCKET_VOLUME - 1)
             / net.minecraftforge.fluids.FluidType.BUCKET_VOLUME);
+    }
+
+    /** Returns the actual fluid amount represented by every item in a stack. */
+    static long amountInContainers(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return 0L;
+        }
+        Optional<FluidStack> fluid = displayFluid(stack);
+        if (fluid.isEmpty()) {
+            return 0L;
+        }
+        try {
+            return Math.multiplyExact(
+                Math.max(0L, fluid.get().getAmount()),
+                Math.max(1L, stack.getCount())
+            );
+        } catch (ArithmeticException overflow) {
+            return Long.MAX_VALUE;
+        }
+    }
+
+    /** Recreates a representative tree item for a fluid key reported by a network. */
+    static Optional<ItemStack> representativeForKey(String key, long amount) {
+        if (key == null || !key.startsWith("fluid:") || amount <= 0) {
+            return Optional.empty();
+        }
+        ResourceLocation id = ResourceLocation.tryParse(key.substring("fluid:".length()));
+        if (id == null) {
+            return Optional.empty();
+        }
+        Fluid fluid = BuiltInRegistries.FLUID.get(id);
+        if (fluid == null || fluid == net.minecraft.world.level.material.Fluids.EMPTY) {
+            return Optional.empty();
+        }
+        int safeAmount = (int) Math.min(Integer.MAX_VALUE, amount);
+        FluidStack value = new FluidStack(fluid, safeAmount);
+        return Optional.of(cachedRepresentation(value));
+    }
+
+    private static ItemStack cachedRepresentation(FluidStack value) {
+        String cacheKey = fluidKey(value) + "|" + value.getAmount();
+        ItemStack prototype = FLUID_REPRESENTATIONS.computeIfAbsent(cacheKey, ignored -> {
+            var bucketItem = value.getFluid().getBucket();
+            ItemStack bucket = new ItemStack(bucketItem == Items.AIR ? Items.BUCKET : bucketItem);
+            registerDisplay(bucket, value);
+            return bucket;
+        });
+        return copyWithDisplay(prototype);
     }
 
     /**
@@ -173,12 +356,6 @@ final class FluidRecipeCompat {
             return 0;
         }
         long denominator = Math.max(1, stack.getCount());
-        // Cost records normalize their display stack count to one.  When
-        // that happened to a synthetic partial-fluid container, recover the
-        // original number of containers from the fluid amount itself.
-        if (denominator == 1 && value.get().getAmount() > net.minecraftforge.fluids.FluidType.BUCKET_VOLUME) {
-            denominator = containerCount(value.get().getAmount());
-        }
         long numerator;
         try {
             numerator = Math.multiplyExact((long) value.get().getAmount(), units);
@@ -202,7 +379,7 @@ final class FluidRecipeCompat {
     }
 
     static Optional<IFocus<FluidStack>> createOutputFocus(IJeiRuntime runtime, ItemStack stack) {
-        Optional<FluidStack> value = displayFluid(stack);
+        Optional<FluidStack> value = treeFluid(stack);
         if (runtime == null || value.isEmpty()) {
             return Optional.empty();
         }
@@ -229,7 +406,7 @@ final class FluidRecipeCompat {
     }
 
     static boolean render(GuiGraphics graphics, ItemStack stack, int x, int y) {
-        Optional<FluidStack> value = displayFluid(stack);
+        Optional<FluidStack> value = treeFluid(stack);
         if (value.isEmpty()) {
             return false;
         }
@@ -245,7 +422,7 @@ final class FluidRecipeCompat {
     }
 
     static boolean renderTooltip(GuiGraphics graphics, ItemStack stack, int mouseX, int mouseY) {
-        Optional<FluidStack> value = displayFluid(stack);
+        Optional<FluidStack> value = treeFluid(stack);
         if (value.isEmpty()) {
             return false;
         }

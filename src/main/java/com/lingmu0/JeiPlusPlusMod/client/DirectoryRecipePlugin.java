@@ -47,12 +47,13 @@ public final class DirectoryRecipePlugin implements IModPlugin {
         jeiRuntime = runtime;
         RecipeTreeData.clearCaches();
         RecipeTreeDefaults.reload();
+        RecipeTreeSession.resumeAfterRuntimeReload();
     }
 
     @Override
     public void onRuntimeUnavailable() {
         jeiRuntime = null;
         RecipeTreeData.clearCaches();
-        RecipeTreeSession.clear();
+        RecipeTreeSession.suspendForRuntimeReload();
     }
 }

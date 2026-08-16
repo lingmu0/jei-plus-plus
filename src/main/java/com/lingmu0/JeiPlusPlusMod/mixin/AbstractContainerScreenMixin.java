@@ -31,13 +31,14 @@ public abstract class AbstractContainerScreenMixin {
         if (!(slot.container instanceof Inventory) || slot.getItem().isEmpty()) {
             return;
         }
+        boolean finalProduct = RecipeTreeFavorites.isFinalProduct(slot.getItem());
         boolean intermediate = RecipeTreeFavorites.isIntermediate(slot.getItem());
         boolean required = RecipeTreeFavorites.isRequired(slot.getItem());
-        if (!intermediate && !required) {
+        if (!finalProduct && !intermediate && !required) {
             return;
         }
-        int fill = intermediate ? 0x44FF2222 : 0x3300BBFF;
-        int border = intermediate ? 0xDDFF5555 : 0xCC55DDFF;
+        int fill = finalProduct ? 0x4433CC66 : (intermediate ? 0x44FF2222 : 0x3300BBFF);
+        int border = finalProduct ? 0xDD66FF88 : (intermediate ? 0xDDFF5555 : 0xCC55DDFF);
         graphics.pose().pushPose();
         graphics.pose().translate(0, 0, 300);
         graphics.fill(slot.x, slot.y, slot.x + 16, slot.y + 16, fill);
@@ -69,13 +70,14 @@ public abstract class AbstractContainerScreenMixin {
             if (!RecipeTreeFavorites.isNetworkStorageSlot(slot) || slot.getItem().isEmpty()) {
                 continue;
             }
+            boolean finalProduct = RecipeTreeFavorites.isFinalProduct(slot.getItem());
             boolean intermediate = RecipeTreeFavorites.isIntermediate(slot.getItem());
             boolean required = RecipeTreeFavorites.isRequired(slot.getItem());
-            if (!intermediate && !required) {
+            if (!finalProduct && !intermediate && !required) {
                 continue;
             }
-            int fill = intermediate ? 0x44FF2222 : 0x3300BBFF;
-            int border = intermediate ? 0xDDFF5555 : 0xCC55DDFF;
+            int fill = finalProduct ? 0x4433CC66 : (intermediate ? 0x44FF2222 : 0x3300BBFF);
+            int border = finalProduct ? 0xDD66FF88 : (intermediate ? 0xDDFF5555 : 0xCC55DDFF);
             // render() has already restored the screen pose after drawing
             // the container.  Unlike renderSlot(), the slot coordinates are
             // therefore relative to the container and must be translated to
