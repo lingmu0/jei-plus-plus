@@ -446,7 +446,10 @@ public final class RecipeTreeFavorites {
         Set<String> highlightedAeKeys = new HashSet<>(nextRequired);
         highlightedAeKeys.addAll(nextIntermediate);
         highlightedAeKeys.addAll(nextFinal);
-        StorageNetworkIntegration.prioritizeVisibleEntries(highlightedAeKeys);
+        // Native storage screens rebuild their view from packet callbacks.
+        // Queue the partition for the next pre-render pass; native-update
+        // mixins also apply it immediately at the end of those callbacks.
+        StorageNetworkIntegration.queueVisibleEntries(highlightedAeKeys);
         layoutNativeBookmarkCount = tree != null && tree.craftingMode() && runtime != null
             ? nativeBookmarks
             : -1;
@@ -457,6 +460,29 @@ public final class RecipeTreeFavorites {
         if (changed && bookmarkList != null && !synchronizingNativeBookmarkLayout) {
             ((BookmarkListAccessor) (Object) bookmarkList).jeiPlusPlus$notifyListenersOfChange();
         }
+    }
+
+    /** Applies a queued storage-list partition from the next render pass. */
+    public static void applyPendingNetworkPriority() {
+        StorageNetworkIntegration.applyPendingVisibleEntries();
+    }
+
+    /**
+     * Re-applies the current recipe-tree partition immediately after an
+     * optional storage terminal rebuilds its native view.  Network terminals
+     * rebuild their list from a packet/update callback, so a render-end sort
+     * can otherwise be overwritten one frame later.  Keeping this entry point
+     * here also lets the optional integration mixins stay completely
+     * reflective/client-only.
+     */
+    public static void applyCurrentNetworkPriority() {
+        if (!isActive()) {
+            return;
+        }
+        Set<String> keys = new HashSet<>(requiredIngredientKeys);
+        keys.addAll(intermediateIngredientKeys);
+        keys.addAll(finalProductIngredientKeys);
+        StorageNetworkIntegration.prioritizeVisibleEntries(keys);
     }
 
     private static int appendGroup(

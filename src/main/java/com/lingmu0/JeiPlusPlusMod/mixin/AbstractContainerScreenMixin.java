@@ -22,7 +22,12 @@ public abstract class AbstractContainerScreenMixin {
         float partialTick,
         CallbackInfo ci
     ) {
+        // Refresh and apply the request before the terminal draws its native
+        // list.  Applying at render-tail changes the list after it was shown
+        // and is the source of the one-frame order twitch on packet updates.
+        RecipeTreeFavorites.applyPendingNetworkPriority();
         RecipeTreeFavorites.refreshThrottled();
+        RecipeTreeFavorites.applyPendingNetworkPriority();
         RecipeTreeTransfer.tick((Screen) (Object) this);
     }
 
