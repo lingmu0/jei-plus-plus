@@ -249,6 +249,11 @@ public final class RecipeTreeTransfer {
         }
         Slot result = screen.getMenu().getSlot(pendingResultSlot);
         if (!result.hasItem()) {
+            // QUICK_MOVE repeatedly calls the menu's quickMoveStack method
+            // while the result remains the same item. Therefore one click
+            // can craft and collect every operation that was loaded into the
+            // input slots. Account for that whole loaded batch at once.
+            pendingChunk = Math.max(1, pendingLoadedBatches);
             completePendingCraft();
             return;
         }
