@@ -20,6 +20,7 @@ hs_err_pid*
 
 # Common working directory
 run
+/runs/
 
 # Local source/cache material used while developing the addon
 .tmp-jei-*
