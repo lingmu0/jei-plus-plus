@@ -709,6 +709,11 @@ public final class RecipeTreeTransfer {
             int result = Integer.MAX_VALUE;
             boolean foundItemInput = false;
             for (int index = 0; index < inputs.size(); index++) {
+                if (inputs.get(index).isEmpty()) {
+                    // Shaped crafting recipes expose their blank grid cells
+                    // as INPUT views too. They do not constrain the batch.
+                    continue;
+                }
                 Optional<ItemStack> input = selectedInput(
                     inputs.get(index),
                     index < selectedInputs.size() ? selectedInputs.get(index) : "",
@@ -747,6 +752,9 @@ public final class RecipeTreeTransfer {
         }
         for (int inputIndex = 0; inputIndex < inputs.size(); inputIndex++) {
             IRecipeSlotView inputView = inputs.get(inputIndex);
+            if (inputView.isEmpty()) {
+                continue;
+            }
             Optional<ItemStack> input = selectedInput(
                 inputView,
                 inputIndex < selectedInputs.size() ? selectedInputs.get(inputIndex) : "",
