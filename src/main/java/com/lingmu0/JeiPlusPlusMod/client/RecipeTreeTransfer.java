@@ -9,6 +9,7 @@ import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.recipe.category.IRecipeCategory;
 import mezz.jei.api.recipe.transfer.IRecipeTransferError;
 import mezz.jei.api.recipe.transfer.IRecipeTransferHandler;
+import mezz.jei.api.recipe.transfer.IRecipeTransferInfo;
 import mezz.jei.api.recipe.transfer.IRecipeTransferManager;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.common.Internal;
@@ -53,6 +54,8 @@ public final class RecipeTreeTransfer {
     private static int pendingResultSlot = -1;
     private static boolean pendingGenericResultProbe;
     private static int pendingChunk;
+    private static int pendingLoadedBatches;
+    private static int pendingCraftResultSlot = -1;
     private static boolean pendingAe2Carry;
     private static boolean pendingAe2NetworkDeposit;
     private static boolean pendingAe2NetworkRequest;
@@ -404,10 +407,39 @@ public final class RecipeTreeTransfer {
             return;
         }
         PendingCraft craft = pendingCrafts.get(pendingCraftIndex);
-        craft.remainingBatches = Math.max(0, craft.remainingBatches - pendingChunk);
+        int completedBatches = Math.max(1, pendingChunk);
+        craft.remainingBatches = Math.max(0, craft.remainingBatches - completedBatches);
+        pendingLoadedBatches = Math.max(0, pendingLoadedBatches - completedBatches);
         if (craft.remainingBatches <= 0) {
             pendingCraftIndex++;
         }
+
+        // A counted transfer may have filled several operations into the
+        // input slots.  The result slot still represents one operation at a
+        // time, so keep extracting from the same loaded inputs before asking
+        // JEI to transfer another recipe or starting the next dependency.
+        if (pendingLoadedBatches > 0) {
+            pendingResultSlot = pendingCraftResultSlot;
+            pendingGenericResultProbe = pendingResultSlot < 0;
+            pendingAe2Carry = false;
+            pendingAe2NetworkDeposit = false;
+            pendingAe2NetworkRequest = false;
+            pendingAe2NetworkCount = 0;
+            pendingAe2PlacementSlot = -1;
+            pendingAe2PlacementInFlight = false;
+            pendingAe2PlacementCount = 0;
+            pendingAe2PlacementInventoryBefore = 0;
+            pendingAe2OutputKey = "";
+            pendingAe2OutputStack = ItemStack.EMPTY;
+            pendingAe2InventoryBefore = 0;
+            pendingVanillaPickup = false;
+            pendingPickupAttempts = 0;
+            pendingChunk = 1;
+            emptyFrames = 0;
+            waitFrames = 2;
+            return;
+        }
+
         pendingResultSlot = -1;
         pendingGenericResultProbe = false;
         pendingAe2Carry = false;
@@ -421,6 +453,7 @@ public final class RecipeTreeTransfer {
         pendingAe2OutputKey = "";
         pendingAe2OutputStack = ItemStack.EMPTY;
         pendingAe2InventoryBefore = 0;
+        pendingCraftResultSlot = -1;
         pendingVanillaPickup = false;
         pendingPickupAttempts = 0;
         pendingChunk = 0;
@@ -526,14 +559,16 @@ public final class RecipeTreeTransfer {
         int resultSlot = instantResultSlot(menu);
         boolean genericResult = resultSlot < 0
             && hasGenericResultSlot(menu, minecraft.player);
-        // AE2's recipe-transfer packet fills one crafting operation at a time.
-        // Vanilla result slots also consume only one operation per output
-        // click. Transfer one batch at a time so the result is always taken
-        // before the next recursive dependency is started; otherwise a
-        // scaled JEI transfer can leave a second result sitting in the slot.
-        int chunk = resultSlot >= 0 || genericResult
-            ? 1
-            : transferChunk(craft.step, craft.remainingBatches, true);
+        int chunk;
+        if (resultSlot >= 0 || genericResult) {
+            int requested = transferChunk(craft.step, craft.remainingBatches, true);
+            int inputCapacity = maxBatchesForInstantInputs(
+                menu, craft.step, craft.step.selectedInputs(), true
+            );
+            chunk = Math.min(requested, inputCapacity);
+        } else {
+            chunk = transferChunk(craft.step, craft.remainingBatches, true);
+        }
         if (chunk <= 0 || !runTransfer(craft.step, chunk, true, true, false)) {
             clearPending();
             return false;
@@ -548,7 +583,9 @@ public final class RecipeTreeTransfer {
         pendingMenuId = menu.containerId;
         pendingResultSlot = resultSlot;
         pendingGenericResultProbe = genericResult;
-        pendingChunk = chunk;
+        pendingChunk = 1;
+        pendingLoadedBatches = chunk;
+        pendingCraftResultSlot = resultSlot;
         pendingAe2Carry = false;
         pendingAe2NetworkDeposit = false;
         pendingAe2NetworkRequest = false;
@@ -604,6 +641,20 @@ public final class RecipeTreeTransfer {
         return transferChunk(step, step == null ? 0 : step.batches(), false);
     }
 
+    private static Optional<ItemStack> selectedInput(
+        IRecipeSlotView slot,
+        String selectedKey,
+        boolean recursiveCandidates
+    ) {
+        String preferred = preferredInputKey(slot, selectedKey, recursiveCandidates);
+        return slot.getItemStacks()
+            .filter(stack -> !stack.isEmpty())
+            .filter(stack -> preferred.isEmpty()
+                || RecipeTreeData.ingredientKey(stack).equals(preferred))
+            .findFirst()
+            .map(ItemStack::copy);
+    }
+
     private static int transferChunk(
         RecipeTreeData.CraftStep step,
         long requested,
@@ -622,6 +673,136 @@ public final class RecipeTreeTransfer {
             recursiveCandidates
         );
         return (int) Math.max(1, Math.min(Math.min(Integer.MAX_VALUE, requested), capacity));
+    }
+
+    /**
+     * Returns the number of recipe operations that can remain in the current
+     * instant-workstation input slots.  A one-item input slot therefore
+     * returns one and preserves the old one-operation-at-a-time behaviour.
+     */
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static int maxBatchesForInstantInputs(
+        AbstractContainerMenu menu,
+        RecipeTreeData.CraftStep step,
+        List<String> selectedInputs,
+        boolean recursiveCandidates
+    ) {
+        if (menu == null || step == null || Ae2StorageIntegration.isCraftingMenu(menu)) {
+            return 1;
+        }
+        IRecipeLayoutDrawable<?> layout = RecipeTreeData.createLayout(step.recipe()).orElse(null);
+        if (layout == null) {
+            return 1;
+        }
+
+        List<IRecipeSlotView> inputs = layout.getRecipeSlotsView().getSlotViews().stream()
+            .filter(slot -> slot.getRole() == RecipeIngredientRole.INPUT)
+            .toList();
+        if (inputs.isEmpty()) {
+            return 1;
+        }
+
+        List<Slot> recipeSlots = null;
+        try {
+            IRecipeTransferManager manager = Internal.getJeiRuntime().getRecipeTransferManager();
+            Optional<IRecipeTransferHandler<AbstractContainerMenu, Object>> handler = (Optional) manager
+                .getRecipeTransferHandler(menu, (IRecipeCategory) layout.getRecipeCategory());
+            if (handler.isPresent()) {
+                recipeSlots = findRecipeSlots(handler.get(), menu, layout.getRecipe());
+            }
+        } catch (RuntimeException ignored) {
+            // Fall through to the conservative menu-slot probe below.
+        }
+
+        if (recipeSlots != null && inputs.size() <= recipeSlots.size()) {
+            int result = Integer.MAX_VALUE;
+            boolean foundItemInput = false;
+            for (int index = 0; index < inputs.size(); index++) {
+                Optional<ItemStack> input = selectedInput(
+                    inputs.get(index),
+                    index < selectedInputs.size() ? selectedInputs.get(index) : "",
+                    recursiveCandidates
+                );
+                if (input.isEmpty()) {
+                    // Fluids and other non-item ingredients are intentionally
+                    // left on the old safe path.
+                    return 1;
+                }
+                foundItemInput = true;
+                ItemStack stack = input.get();
+                int perBatch = Math.max(1, stack.getCount());
+                int slotCapacity = recipeSlots.get(index).getMaxStackSize(stack);
+                result = Math.min(result, Math.max(1, slotCapacity / perBatch));
+            }
+            return foundItemInput ? Math.max(1, result) : 1;
+        }
+
+        // Vanilla crafting menus have a stable, stackable input grid even if
+        // a third-party JEI handler does not expose its transfer info.
+        if (menu instanceof CraftingMenu || menu instanceof InventoryMenu) {
+            return Integer.MAX_VALUE;
+        }
+
+        // Unknown custom handlers are probed conservatively.  If any
+        // non-player slot that accepts an input is single-item, keep the old
+        // one-at-a-time path.  This also avoids treating result slots as
+        // inputs because they reject the concrete candidate stack.
+        int result = Integer.MAX_VALUE;
+        boolean foundItemInput = false;
+        Player player = Minecraft.getInstance().player;
+        if (player == null) {
+            return 1;
+        }
+        for (IRecipeSlotView inputView : inputs) {
+            int inputIndex = inputs.indexOf(inputView);
+            Optional<ItemStack> input = selectedInput(
+                inputView,
+                inputIndex < selectedInputs.size() ? selectedInputs.get(inputIndex) : "",
+                recursiveCandidates
+            );
+            if (input.isEmpty()) {
+                return 1;
+            }
+            foundItemInput = true;
+            ItemStack stack = input.get();
+            int perBatch = Math.max(1, stack.getCount());
+            boolean foundSlot = false;
+            for (Slot slot : menu.slots) {
+                if (slot.container == player.getInventory() || !slot.mayPlace(stack)) {
+                    continue;
+                }
+                foundSlot = true;
+                int slotCapacity = slot.getMaxStackSize(stack);
+                result = Math.min(result, Math.max(1, slotCapacity / perBatch));
+            }
+            if (!foundSlot) {
+                return 1;
+            }
+        }
+        return foundItemInput ? Math.max(1, result) : 1;
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static List<Slot> findRecipeSlots(
+        IRecipeTransferHandler handler,
+        AbstractContainerMenu menu,
+        Object recipe
+    ) {
+        for (Class<?> type = handler.getClass(); type != null; type = type.getSuperclass()) {
+            for (Field field : type.getDeclaredFields()) {
+                if (!IRecipeTransferInfo.class.isAssignableFrom(field.getType())) {
+                    continue;
+                }
+                try {
+                    field.trySetAccessible();
+                    IRecipeTransferInfo info = (IRecipeTransferInfo) field.get(handler);
+                    return List.copyOf(info.getRecipeSlots(menu, recipe));
+                } catch (ReflectiveOperationException | RuntimeException ignored) {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -978,6 +1159,8 @@ public final class RecipeTreeTransfer {
         pendingResultSlot = -1;
         pendingGenericResultProbe = false;
         pendingChunk = 0;
+        pendingLoadedBatches = 0;
+        pendingCraftResultSlot = -1;
         pendingAe2Carry = false;
         pendingAe2NetworkDeposit = false;
         pendingAe2NetworkRequest = false;
