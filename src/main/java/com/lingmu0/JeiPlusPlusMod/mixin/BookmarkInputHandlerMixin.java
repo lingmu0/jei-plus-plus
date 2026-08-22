@@ -18,6 +18,7 @@ import mezz.jei.gui.input.handlers.SameElementInputHandler;
 import mezz.jei.gui.recipes.IRecipeLayoutWithButtons;
 import mezz.jei.gui.recipes.RecipeGuiLayouts;
 import mezz.jei.gui.recipes.RecipesGui;
+import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -26,6 +27,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Objects;
 import java.util.Optional;
@@ -72,7 +74,10 @@ public abstract class BookmarkInputHandlerMixin {
         CallbackInfoReturnable<java.util.Optional<IUserInputHandler>> cir
     ) {
         IJeiRuntime runtime = Internal.getJeiRuntime();
-        if (!(runtime.getRecipesGui() instanceof RecipesGui recipesGui)) {
+        if (!(runtime.getRecipesGui() instanceof RecipesGui recipesGui)
+            || Minecraft.getInstance().screen != recipesGui) {
+            // RecipesGui remains alive after it is closed. Do not let its last
+            // layout handle bookmarks clicked in the player's inventory.
             return;
         }
 
@@ -165,16 +170,54 @@ public abstract class BookmarkInputHandlerMixin {
             add.invoke(bookmarks, ingredient);
             return;
         } catch (ReflectiveOperationException | RuntimeException ignored) {
-            // JEI 15.x has no addIngredientBookmark method.
+            // JEI 19.27 and older do not expose addIngredientBookmark.
         }
         try {
-            Class<?> type = Class.forName("mezz.jei.gui.bookmarks.IngredientBookmark");
-            Method create = type.getMethod("create", ITypedIngredient.class, mezz.jei.api.runtime.IIngredientManager.class);
-            IBookmark bookmark = (IBookmark) create.invoke(null, ingredient, Internal.getJeiRuntime().getIngredientManager());
-            bookmarks.toggleBookmark(bookmark);
+            IBookmark bookmark = createIngredientBookmark(bookmarks, ingredient);
+            if (bookmark != null) {
+                bookmarks.toggleBookmark(bookmark);
+            }
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             // A missing helper should not break JEI's normal input handling.
         }
+    }
+
+    /**
+     * JEI 19.27 creates ingredient bookmarks through BookmarkFactory, while
+     * later versions expose the same operation directly on BookmarkList.
+     * Resolve the old factory from BookmarkList so its serialized ingredient
+     * id is generated exactly as JEI expects.
+     */
+    private static IBookmark createIngredientBookmark(
+        BookmarkList bookmarks,
+        ITypedIngredient<?> ingredient
+    ) throws ReflectiveOperationException {
+        Field factoryField = findField(bookmarks.getClass(), "bookmarkFactory");
+        if (factoryField == null) {
+            return null;
+        }
+        factoryField.setAccessible(true);
+        Object factory = factoryField.get(bookmarks);
+        for (Method method : factory.getClass().getMethods()) {
+            if (!method.getName().equals("create") || method.getParameterCount() != 1
+                || !method.getParameterTypes()[0].isAssignableFrom(ingredient.getClass())) {
+                continue;
+            }
+            Object value = method.invoke(factory, ingredient);
+            return value instanceof IBookmark bookmark ? bookmark : null;
+        }
+        return null;
+    }
+
+    private static Field findField(Class<?> type, String name) {
+        while (type != null) {
+            try {
+                return type.getDeclaredField(name);
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            }
+        }
+        return null;
     }
 
     private static boolean isIngredientBookmark(IBookmark bookmark) {
