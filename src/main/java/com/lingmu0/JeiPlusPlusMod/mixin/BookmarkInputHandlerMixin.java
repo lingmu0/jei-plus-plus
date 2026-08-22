@@ -22,6 +22,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 
@@ -72,7 +73,10 @@ public abstract class BookmarkInputHandlerMixin {
         CallbackInfoReturnable<Optional<IUserInputHandler>> cir
     ) {
         IJeiRuntime runtime = Internal.getJeiRuntime();
-        if (!(runtime.getRecipesGui() instanceof RecipesGui recipesGui)) {
+        if (!(runtime.getRecipesGui() instanceof RecipesGui recipesGui)
+            || Minecraft.getInstance().screen != recipesGui) {
+            // RecipesGui remains alive after it is closed. Do not let its last
+            // layout handle bookmarks clicked in the player's inventory.
             return;
         }
 
