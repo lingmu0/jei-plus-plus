@@ -45,6 +45,8 @@ final class StorageNetworkIntegration {
         "net.xuwu.betterbeyonddimensions.common.RecipeFill";
     private static final String BBD_NETWORK_HANDLER =
         "net.xuwu.betterbeyonddimensions.NetworkHandler";
+    private static final String BBD_SIDEBAR_RENDERER =
+        "net.xuwu.betterbeyonddimensions.client.SidebarRenderer";
     private static final String IT_MENU =
         "org.cyclops.integratedterminals.inventory.container.ContainerTerminalStorageBase";
     private static final String IT_SCREEN =
@@ -62,6 +64,9 @@ final class StorageNetworkIntegration {
     /** A partition requested by a tree refresh, applied before the next draw. */
     private static volatile Set<String> pendingPrioritizedKeys = Set.of();
     private static volatile boolean priorityPending;
+    private static volatile Object prioritizedBetterBeyondView;
+    private static volatile List<?> betterBeyondNativeEntries = List.of();
+    private static volatile List<?> betterBeyondAppliedEntries = List.of();
 
     private StorageNetworkIntegration() {
     }
@@ -83,6 +88,9 @@ final class StorageNetworkIntegration {
             prioritizedSnapshotRevision = Long.MIN_VALUE;
             pendingPrioritizedKeys = Set.of();
             priorityPending = false;
+            prioritizedBetterBeyondView = null;
+            betterBeyondNativeEntries = List.of();
+            betterBeyondAppliedEntries = List.of();
             return List.of();
         }
         Minecraft minecraft = Minecraft.getInstance();
@@ -288,6 +296,7 @@ final class StorageNetworkIntegration {
                 prioritizeRs2(menu, normalizedKeys);
                 prioritizeRs1(normalizedKeys);
                 prioritizeBeyond(menu, normalizedKeys);
+                prioritizeBetterBeyond(menu, normalizedKeys);
                 prioritizeIntegrated(menu, normalizedKeys);
             }
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
@@ -1210,6 +1219,84 @@ final class StorageNetworkIntegration {
         }
     }
 
+    /**
+     * Better Beyond Dimensions rebuilds its sidebar from a private client view
+     * that already applies the mod's configured sort.  Keep that order as the
+     * base list and replace only the final visible order with a stable
+     * highlighted-first partition.
+     */
+    private static void prioritizeBetterBeyond(Object menu, Set<String> keys)
+        throws ReflectiveOperationException {
+        if (!isBetterBeyondMenu(menu)) {
+            prioritizedBetterBeyondView = null;
+            betterBeyondNativeEntries = List.of();
+            betterBeyondAppliedEntries = List.of();
+            return;
+        }
+        AbstractContainerScreen<?> screen = activeContainerScreen();
+        if (screen == null || screen.getMenu() != menu) {
+            return;
+        }
+
+        Class<?> rendererType = Class.forName(BBD_SIDEBAR_RENDERER);
+        Object storageView = readStaticField(rendererType, "STORAGE_VIEW");
+        if (storageView == null) {
+            return;
+        }
+        Class<?> stateType = Class.forName(BBD_CLIENT_STORAGE_STATE);
+        if (!Boolean.TRUE.equals(invokeStaticNoArg(stateType, "available"))
+            || Boolean.TRUE.equals(invokeStaticNoArg(stateType, "isSidebarHidden"))) {
+            return;
+        }
+        Object snapshot = invokeStaticNoArg(stateType, "snapshot");
+        Object searchBox = invokeNoArg(screen, "bbd$getSearchBox");
+        Object searchValue = invokeNoArg(searchBox, "getValue");
+        if (snapshot == null || !(searchValue instanceof String searchText)) {
+            return;
+        }
+
+        Method entriesMethod = findCompatibleMethod(
+            storageView.getClass(),
+            "entries",
+            snapshot.getClass(),
+            String.class
+        );
+        if (entriesMethod == null) {
+            return;
+        }
+        Object entriesValue = entriesMethod.invoke(storageView, snapshot, searchText);
+        if (!(entriesValue instanceof List<?> entries)) {
+            return;
+        }
+
+        if (storageView != prioritizedBetterBeyondView) {
+            prioritizedBetterBeyondView = storageView;
+            betterBeyondNativeEntries = List.of();
+            betterBeyondAppliedEntries = List.of();
+        }
+        // A new list identity means BBD has rebuilt its native quantity/name/
+        // time-sorted view. Capture it before applying our partition so the
+        // original order inside both partitions remains BBD's order.
+        if (entries != betterBeyondAppliedEntries) {
+            betterBeyondNativeEntries = List.copyOf(entries);
+        }
+
+        List<Object> prioritized = new ArrayList<>(betterBeyondNativeEntries);
+        prioritized.sort(Comparator.comparing(entry -> !isHighlightedBetterBeyondEntry(entry, keys)));
+        if (sameElementOrder(entries, prioritized)) {
+            betterBeyondAppliedEntries = entries;
+            return;
+        }
+
+        Field orderedEntries = findField(storageView.getClass(), "orderedEntries");
+        if (orderedEntries == null) {
+            return;
+        }
+        List<Object> applied = List.copyOf(prioritized);
+        orderedEntries.set(storageView, applied);
+        betterBeyondAppliedEntries = applied;
+    }
+
     private static void prioritizeIntegrated(Object menu, Set<String> keys) throws ReflectiveOperationException {
         if (!isIntegratedTerminalMenu(menu)) {
             return;
@@ -1390,6 +1477,34 @@ final class StorageNetworkIntegration {
         }
     }
 
+    /** Draws recipe-tree overlays on Better Beyond Dimensions' virtual sidebar slots. */
+    static void renderBetterBeyondHighlights(
+        GuiGraphics graphics,
+        AbstractContainerScreen<?> screen
+    ) {
+        if (graphics == null || screen == null || !RecipeTreeFavorites.isActive()
+            || !isBetterBeyondMenu(screen.getMenu())) {
+            return;
+        }
+        try {
+            for (Slot slot : screen.getMenu().slots) {
+                if (slot == null
+                    || !BBD_NETWORK_SLOT.equals(slot.getClass().getName())
+                    || !slot.hasItem()) {
+                    continue;
+                }
+                drawHighlight(
+                    graphics,
+                    screen.getGuiLeft() + slot.x,
+                    screen.getGuiTop() + slot.y,
+                    slot.getItem()
+                );
+            }
+        } catch (RuntimeException | LinkageError ignored) {
+            // The optional sidebar must never make a container render fatal.
+        }
+    }
+
     private static void renderIntegratedHighlights(GuiGraphics graphics, AbstractContainerScreen<?> screen)
         throws ReflectiveOperationException {
         Object menu = screen.getMenu();
@@ -1528,6 +1643,22 @@ final class StorageNetworkIntegration {
             return FluidRecipeCompat.describeFluid(entry)
                 .map(info -> keys.contains(info.key()))
                 .orElse(false);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return false;
+        }
+    }
+
+    private static boolean isHighlightedBetterBeyondEntry(Object entry, Set<String> keys) {
+        try {
+            Object key = invokeNoArg(entry, "key");
+            ItemStack stack = stackOf(invokeNoArg(key, "copyStack"));
+            if (stack.isEmpty()) {
+                stack = stackOf(invokeNoArg(key, "getRenderStack"));
+            }
+            if (stack.isEmpty()) {
+                stack = storageItemStack(key);
+            }
+            return !stack.isEmpty() && matchesHighlightKey(stack, keys);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return false;
         }
@@ -1698,6 +1829,18 @@ final class StorageNetworkIntegration {
                 }
             } else {
                 seenUnhighlighted = true;
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameElementOrder(List<?> first, List<?> second) {
+        if (first == null || second == null || first.size() != second.size()) {
+            return false;
+        }
+        for (int index = 0; index < first.size(); index++) {
+            if (first.get(index) != second.get(index)) {
+                return false;
             }
         }
         return true;

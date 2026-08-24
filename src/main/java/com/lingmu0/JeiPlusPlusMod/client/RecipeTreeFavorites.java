@@ -300,6 +300,14 @@ public final class RecipeTreeFavorites {
         StorageNetworkIntegration.renderVirtualStorageHighlights(graphics, screen);
     }
 
+    /** Draws recipe-tree overlays on Better Beyond Dimensions' virtual sidebar slots. */
+    public static void renderBetterBeyondHighlights(
+        GuiGraphics graphics,
+        AbstractContainerScreen<?> screen
+    ) {
+        StorageNetworkIntegration.renderBetterBeyondHighlights(graphics, screen);
+    }
+
     /** Draws Integrated Terminals overlays before that screen renders its tooltip. */
     public static void renderIntegratedTerminalHighlightsBeforeTooltip(
         GuiGraphics graphics,
