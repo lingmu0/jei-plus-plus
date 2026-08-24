@@ -28,6 +28,7 @@
     "RefinedStorageGridViewMixin",
     "RefinedStorageRepositoryMixin",
     "BeyondDimensionsNetMenuMixin",
+    "BetterBeyondSidebarRendererMixin",
     "IntegratedTerminalStorageMixin",
     "IntegratedTerminalMenuMixin",
     "AbstractContainerScreenMixin"
