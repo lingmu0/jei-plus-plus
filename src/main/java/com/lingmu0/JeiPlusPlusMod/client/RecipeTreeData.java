@@ -1,5 +1,6 @@
 package com.lingmu0.JeiPlusPlusMod.client;
 
+import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
 import mezz.jei.api.constants.VanillaTypes;
 import mezz.jei.api.gui.IRecipeLayoutDrawable;
 import mezz.jei.api.gui.ingredient.IRecipeSlotView;
@@ -976,8 +977,9 @@ public final class RecipeTreeData {
         if (category == null) {
             return false;
         }
-        String path = category.getRecipeType().getUid().getPath();
-        return !path.startsWith("tag_recipes/");
+        ResourceLocation recipeType = category.getRecipeType().getUid();
+        return !recipeType.getPath().startsWith("tag_recipes/")
+            && !JeiPlusPlusConfig.isRecipeTypeDisabled(recipeType);
     }
 
     public static Optional<ItemStack> firstOutput(IRecipeLayoutDrawable<?> layout) {

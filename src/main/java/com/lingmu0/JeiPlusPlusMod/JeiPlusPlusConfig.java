@@ -3,8 +3,10 @@ package com.lingmu0.JeiPlusPlusMod;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.fml.ModLoadingContext;
 import net.minecraftforge.fml.config.ModConfig;
+import net.minecraft.resources.ResourceLocation;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /** Client settings for JEI++ behaviour. */
@@ -35,6 +37,11 @@ public final class JeiPlusPlusConfig {
         BUILDER
             .comment("Add recipe-tree and crafting-assistant buttons to JEI recipe layouts.")
             .define("recipeTreeEnabled", true);
+
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> DISABLED_RECIPE_TYPES =
+        BUILDER
+            .comment("Recipe type ids excluded from the recipe tree, for example [\"minecraft:blasting\"].")
+            .defineList("disabledRecipeTypes", List.of(), value -> value instanceof String);
 
     public static final ForgeConfigSpec.BooleanValue AUTOMATIC_CRAFTING_ENABLED =
         BUILDER
@@ -76,6 +83,19 @@ public final class JeiPlusPlusConfig {
     public static boolean isDefaultGroupEnabled(String id) {
         ForgeConfigSpec.BooleanValue value = DEFAULT_GROUPS.get(id);
         return value == null || value.get();
+    }
+
+    public static boolean isRecipeTypeDisabled(ResourceLocation recipeType) {
+        if (recipeType == null) {
+            return false;
+        }
+        String id = recipeType.toString();
+        for (String configured : DISABLED_RECIPE_TYPES.get()) {
+            if (configured != null && configured.trim().equalsIgnoreCase(id)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

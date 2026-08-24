@@ -35,6 +35,16 @@ final class StorageNetworkIntegration {
     private static final String RS2_MENU = "com.refinedmods.refinedstorage.common.grid.AbstractCraftingGridContainerMenu";
     private static final String RS1_SCREEN = "com.refinedmods.refinedstorage.screen.grid.GridScreen";
     private static final String BD_MENU = "com.wintercogs.beyonddimensions.common.menu.DimensionsCraftMenu";
+    private static final String BBD_MENU_ACCESS =
+        "net.xuwu.betterbeyonddimensions.common.NetworkStorageMenuAccess";
+    private static final String BBD_NETWORK_SLOT =
+        "net.xuwu.betterbeyonddimensions.common.NetworkStorageSlot";
+    private static final String BBD_CLIENT_STORAGE_STATE =
+        "net.xuwu.betterbeyonddimensions.client.ClientStorageState";
+    private static final String BBD_RECIPE_FILL =
+        "net.xuwu.betterbeyonddimensions.common.RecipeFill";
+    private static final String BBD_NETWORK_HANDLER =
+        "net.xuwu.betterbeyonddimensions.NetworkHandler";
     private static final String IT_MENU =
         "org.cyclops.integratedterminals.inventory.container.ContainerTerminalStorageBase";
     private static final String IT_SCREEN =
@@ -87,15 +97,16 @@ final class StorageNetworkIntegration {
 
         boolean refinedMenu = isRefinedStorageMenu(menu);
         boolean beyondMenu = isBeyondMenu(menu);
+        boolean betterBeyondMenu = isBetterBeyondMenu(menu);
         boolean integratedMenu = isIntegratedTerminalMenu(menu);
-        boolean ae2CraftingMenu = !refinedMenu && !beyondMenu && !integratedMenu
+        boolean ae2CraftingMenu = !refinedMenu && !beyondMenu && !betterBeyondMenu && !integratedMenu
             && Ae2StorageIntegration.isCraftingMenu(menu);
         // Do not probe AE2's reflective repository for a terminal that is
         // known to belong to another storage mod. The old order paid the
         // AE2 class/method lookup cost on every 50ms refresh of RS/Beyond/IT.
         List<StoredStack> ae2 = new ArrayList<>();
         List<StoredFluid> ae2Fluids = new ArrayList<>();
-        if (!refinedMenu && !beyondMenu && !integratedMenu) {
+        if (!refinedMenu && !beyondMenu && !betterBeyondMenu && !integratedMenu) {
             for (Ae2StorageIntegration.StoredStack stored : Ae2StorageIntegration.storedStacks()) {
                 ae2.add(new StoredStack(stored.stack(), stored.amount()));
             }
@@ -119,8 +130,15 @@ final class StorageNetworkIntegration {
                     result = beyond.stacks();
                     fluidResult = beyond.fluids();
                 } else {
-                    result = integratedTerminalStacks(menu);
-                    fluidResult = integratedTerminalFluids(menu);
+                    BetterBeyondSnapshot betterBeyond = betterBeyondSnapshot(menu);
+                    if (!betterBeyond.stacks().isEmpty() || !betterBeyond.fluids().isEmpty()
+                        || betterBeyondMenu) {
+                        result = betterBeyond.stacks();
+                        fluidResult = betterBeyond.fluids();
+                    } else {
+                        result = integratedTerminalStacks(menu);
+                        fluidResult = integratedTerminalFluids(menu);
+                    }
                 }
             }
         }
@@ -304,6 +322,9 @@ final class StorageNetworkIntegration {
         if (isBeyondMenu(menu)) {
             return sendBeyondRecipe(menu, templates, send);
         }
+        if (isBetterBeyondMenu(menu)) {
+            return sendBetterBeyondRecipe(menu, templates, send);
+        }
         return null;
     }
 
@@ -335,6 +356,15 @@ final class StorageNetworkIntegration {
                 }
                 for (int i = 0; i < 9; i++) {
                     actual.add(stackOf(invokeNoArg(invoke(menu, "getSlot", int.class, start + i), "getItem")));
+                }
+            } else if (isBetterBeyondMenu(menu)) {
+                List<Integer> slots = betterBeyondCraftingSlotIds(menu);
+                if (slots.size() < 9) {
+                    return false;
+                }
+                for (int index = 0; index < 9; index++) {
+                    actual.add(stackOf(menu instanceof AbstractContainerMenu container
+                        ? container.getSlot(slots.get(index)).getItem() : null));
                 }
             } else if (isIntegratedTerminalMenu(menu)) {
                 Object commonTab = integratedSelectedCommonTab(menu);
@@ -761,6 +791,45 @@ final class StorageNetworkIntegration {
         private static final BeyondSnapshot EMPTY = new BeyondSnapshot(List.of(), List.of());
     }
 
+    /** Reads Better Beyond Dimensions' client-authoritative sidebar snapshot. */
+    private static BetterBeyondSnapshot betterBeyondSnapshot(Object menu) {
+        if (!isBetterBeyondMenu(menu)) {
+            return BetterBeyondSnapshot.EMPTY;
+        }
+        try {
+            Class<?> stateType = Class.forName(BBD_CLIENT_STORAGE_STATE);
+            if (!Boolean.TRUE.equals(invokeStaticNoArg(stateType, "available"))
+                || Boolean.TRUE.equals(invokeStaticNoArg(stateType, "isSidebarHidden"))) {
+                return BetterBeyondSnapshot.EMPTY;
+            }
+            Object entries = invokeStaticNoArg(stateType, "entries");
+            if (!(entries instanceof Iterable<?> iterable)) {
+                return BetterBeyondSnapshot.EMPTY;
+            }
+
+            List<StoredStack> stacks = new ArrayList<>();
+            for (Object entry : iterable) {
+                if (entry == null) {
+                    continue;
+                }
+                ItemStack stack = stackOf(invokeNoArg(entry, "stack"));
+                long amount = numberValue(invokeNoArg(entry, "amount"));
+                if (stack.isEmpty() || amount <= 0L) {
+                    continue;
+                }
+                stack.setCount(1);
+                stacks.add(new StoredStack(stack, amount));
+            }
+            return new BetterBeyondSnapshot(List.copyOf(stacks), List.of());
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return BetterBeyondSnapshot.EMPTY;
+        }
+    }
+
+    private record BetterBeyondSnapshot(List<StoredStack> stacks, List<StoredFluid> fluids) {
+        private static final BetterBeyondSnapshot EMPTY = new BetterBeyondSnapshot(List.of(), List.of());
+    }
+
     private static ItemStack storageItemStack(Object value) throws ReflectiveOperationException {
         if (value instanceof ItemStack stack && !stack.isEmpty()) {
             return stack.copy();
@@ -903,6 +972,57 @@ final class StorageNetworkIntegration {
         return false;
     }
 
+    /** Uses Better Beyond Dimensions' server-validated recipe-fill packet for a normal 3x3 grid. */
+    private static Boolean sendBetterBeyondRecipe(Object menu, List<ItemStack> templates, boolean send) {
+        if (templates.size() != 9) {
+            return null;
+        }
+        List<Integer> slotIds = betterBeyondCraftingSlotIds(menu);
+        if (slotIds.size() < 9) {
+            return null;
+        }
+        try {
+            Class<?> fillType = Class.forName(BBD_RECIPE_FILL);
+            Constructor<?> fillConstructor = constructor(fillType, int.class, ItemStack.class, int.class);
+            Class<?> handlerType = Class.forName(BBD_NETWORK_HANDLER);
+            Method fillRecipe = findCompatibleMethod(handlerType, "fillRecipe", List.class);
+            if (fillRecipe == null) {
+                return false;
+            }
+            if (send) {
+                List<Object> fills = new ArrayList<>(9);
+                for (int index = 0; index < 9; index++) {
+                    ItemStack stack = templates.get(index) == null
+                        ? ItemStack.EMPTY : templates.get(index).copy();
+                    int amount = stack.isEmpty() ? 0 : Math.max(1, stack.getCount());
+                    if (amount > 0) {
+                        stack.setCount(1);
+                    }
+                    fills.add(fillConstructor.newInstance(slotIds.get(index), stack, amount));
+                }
+                fillRecipe.invoke(null, fills);
+            }
+            return true;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return false;
+        }
+    }
+
+    private static List<Integer> betterBeyondCraftingSlotIds(Object menu) {
+        if (!(menu instanceof AbstractContainerMenu container) || !isBetterBeyondMenu(menu)) {
+            return List.of();
+        }
+        List<Integer> result = new ArrayList<>(9);
+        for (int index = 0; index < container.slots.size(); index++) {
+            Slot slot = container.getSlot(index);
+            if (slot.container != null
+                && slot.container.getClass().getName().endsWith("CraftingContainer")) {
+                result.add(index);
+            }
+        }
+        return result.size() < 9 ? List.of() : List.copyOf(result.subList(0, 9));
+    }
+
     private static boolean isRefinedStorageMenu(Object menu) {
         return isRs1Menu(menu) || isRs2Menu(menu);
     }
@@ -917,6 +1037,21 @@ final class StorageNetworkIntegration {
 
     private static boolean isBeyondMenu(Object menu) {
         return menu != null && classOrSuper(menu.getClass(), BD_MENU);
+    }
+
+    private static boolean isBetterBeyondMenu(Object menu) {
+        if (!(menu instanceof AbstractContainerMenu container)) {
+            return false;
+        }
+        if (classOrInterface(container.getClass(), BBD_MENU_ACCESS)) {
+            return true;
+        }
+        for (Slot slot : container.slots) {
+            if (slot != null && BBD_NETWORK_SLOT.equals(slot.getClass().getName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static List<StoredFluid> collectFluidEntries(Object entries, String amountMethod)
@@ -1512,6 +1647,20 @@ final class StorageNetworkIntegration {
         return false;
     }
 
+    private static boolean classOrInterface(Class<?> type, String name) {
+        for (Class<?> current = type; current != null; current = current.getSuperclass()) {
+            if (name.equals(current.getName())) {
+                return true;
+            }
+            for (Class<?> interfaceType : current.getInterfaces()) {
+                if (classOrInterface(interfaceType, name)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private static boolean isHighlightedResource(Object resource, Object repository, Set<String> keys) {
         try {
             ItemStack stack = stackOf(invokeNoArg(resource, "getItemStack"));
@@ -1717,6 +1866,11 @@ final class StorageNetworkIntegration {
         }
         Method method = findNoArgMethod(target.getClass(), name);
         return method == null ? null : method.invoke(target);
+    }
+
+    private static Object invokeStaticNoArg(Class<?> type, String name) throws ReflectiveOperationException {
+        Method method = findNoArgMethod(type, name);
+        return method == null ? null : method.invoke(null);
     }
 
     private static Object invoke(Object target, String name, Class<?> parameterType, Object argument)
