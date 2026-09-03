@@ -6,6 +6,7 @@ import mezz.jei.api.gui.IRecipeLayoutDrawable;
 import mezz.jei.api.gui.drawable.IDrawable;
 import mezz.jei.api.ingredients.IIngredientHelper;
 import mezz.jei.api.ingredients.IIngredientRenderer;
+import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.api.recipe.IFocus;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.runtime.IJeiRuntime;
@@ -675,7 +676,16 @@ public final class RecipeTreeScreen extends Screen {
                 .copy().withStyle(ChatFormatting.GRAY));
         });
         if (alternatives.size() > 1) {
-            tooltip.add(new TagContentTooltipComponent<>(renderer, alternatives));
+            var ingredientManager = runtime.getIngredientManager();
+            List<ITypedIngredient<?>> typedAlternatives = new ArrayList<>();
+            for (ItemStack stack : alternatives) {
+                ingredientManager
+                    .createTypedIngredient(VanillaTypes.ITEM_STACK, stack, false)
+                    .ifPresent(ingredient -> typedAlternatives.add(ingredient));
+            }
+            if (typedAlternatives.size() > 1) {
+                tooltip.add(new TagContentTooltipComponent(ingredientManager, typedAlternatives));
+            }
         }
         graphics.pose().pushPose();
         graphics.pose().translate(0, 0, 700);

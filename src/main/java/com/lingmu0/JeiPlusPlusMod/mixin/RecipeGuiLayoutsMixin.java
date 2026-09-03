@@ -14,10 +14,21 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.List;
 import java.util.Optional;
 
-/** Adds a directory action to cycling/multi-ingredient recipe slots. */
+/**
+ * JEI <= 19.44 path for the multi-ingredient directory action.
+ * JEI 19.51 removes getClickedIngredient from RecipeGuiLayouts, so this
+ * injection is optional and the 19.51 path is handled by
+ * RecipeSlotClickTargetFactoryMixin.
+ */
 @Mixin(value = RecipeGuiLayouts.class, remap = false)
 public abstract class RecipeGuiLayoutsMixin {
-    @Inject(method = "getClickedIngredient", at = @At("HEAD"), cancellable = true, remap = false)
+    @Inject(
+        method = "getClickedIngredient",
+        at = @At("HEAD"),
+        cancellable = true,
+        remap = false,
+        require = 0
+    )
     private static void jeiPlusPlus$directoryClick(
         RecipeSlotUnderMouse slotUnderMouse,
         CallbackInfoReturnable<Optional<IClickableIngredientInternal<?>>> cir

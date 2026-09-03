@@ -847,7 +847,19 @@ public final class RecipeTreeFavorites {
                         tooltip.add(Services.PLATFORM.getRenderHelper().getName(tagKey)
                             .copy().withStyle(ChatFormatting.GRAY));
                     });
-                    tooltip.add(new TagContentTooltipComponent<>(itemRenderer, alternatives));
+                    IJeiRuntime runtime = DirectoryRecipePlugin.getJeiRuntime();
+                    if (runtime != null) {
+                        var ingredientManager = runtime.getIngredientManager();
+                        List<ITypedIngredient<?>> typedAlternatives = new ArrayList<>();
+                        for (ItemStack stack : alternatives) {
+                            ingredientManager
+                                .createTypedIngredient(VanillaTypes.ITEM_STACK, stack, false)
+                                .ifPresent(ingredient -> typedAlternatives.add(ingredient));
+                        }
+                        if (typedAlternatives.size() > 1) {
+                            tooltip.add(new TagContentTooltipComponent(ingredientManager, typedAlternatives));
+                        }
+                    }
                 }
             }
             long owned = owned();
