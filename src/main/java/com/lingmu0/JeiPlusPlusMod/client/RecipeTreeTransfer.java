@@ -28,6 +28,7 @@ import net.minecraft.world.inventory.LoomMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.inventory.SmithingMenu;
 import net.minecraft.world.inventory.StonecutterMenu;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 
@@ -1275,6 +1276,16 @@ public final class RecipeTreeTransfer {
         @Override
         public Optional<ITypedIngredient<?>> getDisplayedIngredient() {
             return ingredients.stream().findFirst();
+        }
+
+        @Override
+        public Stream<ITypedIngredient<?>> getDisplayedIngredients() {
+            return ingredients.stream();
+        }
+
+        @Override
+        public Optional<TagKey<?>> getTagKey() {
+            return delegate.getTagKey();
         }
 
         @Override
