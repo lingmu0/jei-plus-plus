@@ -30,6 +30,7 @@ import net.minecraft.world.inventory.SmithingMenu;
 import net.minecraft.world.inventory.StonecutterMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingRecipe;
+import net.minecraft.tags.TagKey;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -1275,6 +1276,16 @@ public final class RecipeTreeTransfer {
         @Override
         public Optional<ITypedIngredient<?>> getDisplayedIngredient() {
             return ingredients.stream().findFirst();
+        }
+
+        /** Added as an abstract method by JEI 19.51. */
+        public Stream<ITypedIngredient<?>> getDisplayedIngredients() {
+            return ingredients.stream();
+        }
+
+        /** Added as an abstract method by JEI 19.51. */
+        public Optional<TagKey<?>> getTagKey() {
+            return Optional.empty();
         }
 
         @Override

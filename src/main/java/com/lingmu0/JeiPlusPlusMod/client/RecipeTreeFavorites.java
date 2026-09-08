@@ -23,7 +23,6 @@ import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.input.UserInput;
 import mezz.jei.gui.overlay.elements.IElement;
 import mezz.jei.gui.util.FocusUtil;
-import mezz.jei.library.gui.ingredients.TagContentTooltipComponent;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -847,7 +846,9 @@ public final class RecipeTreeFavorites {
                         tooltip.add(Services.PLATFORM.getRenderHelper().getName(tagKey)
                             .copy().withStyle(ChatFormatting.GRAY));
                     });
-                    tooltip.add(new TagContentTooltipComponent<>(itemRenderer, alternatives));
+                    JeiTooltipCompat.createTagContent(
+                        DirectoryRecipePlugin.getJeiRuntime(), itemRenderer, alternatives
+                    ).ifPresent(tooltip::add);
                 }
             }
             long owned = owned();

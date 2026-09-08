@@ -108,28 +108,38 @@ JSON 分组示例：
 
 ```json
 {
-  "id": "mypack:shiny_things",
-  "type": "jei_plus_plus:group",
-  "name": "mypack.group.shiny_things",
-  "enabled": true,
-  "priority": 10,
-  "contents": [
-    "minecraft:diamond",
-    "minecraft:emerald",
-    "#c:glass_blocks"
-  ],
-  "exclusions": ["minecraft:purple_stained_glass"]
+  "groups": [
+    {
+      "id": "mypack:shiny_things",
+      "type": "jei_plus_plus:group",
+      "name": "mypack.group.shiny_things",
+      "enabled": true,
+      "priority": 10,
+      "contents": [
+        "minecraft:diamond",
+        "minecraft:emerald",
+        "#c:glass_blocks"
+      ],
+      "exclusions": ["minecraft:purple_stained_glass"]
+    },
+    {
+      "id": "mypack:ores",
+      "type": "jei_plus_plus:regex",
+      "regex": "minecraft:.*_ore",
+      "priority": 5
+    }
+  ]
 }
 ```
 
-支持的 JSON 类型：`jei_plus_plus:group`（物品 ID 或 Tag）、`jei_plus_plus:tag`（Tag 成员）和 `jei_plus_plus:regex`（按完整 `namespace:path` 注册名匹配）。`name` 可以是翻译键或直接显示文本，`priority` 越大越优先。
+每个文件也仍支持旧的单对象格式；多个分组可以放在顶层数组中，或放在对象的 `groups` 数组中。支持的 JSON 类型：`jei_plus_plus:group`（物品 ID 或 Tag）、`jei_plus_plus:tag`（Tag 成员）和 `jei_plus_plus:regex`（按完整 `namespace:path` 注册名匹配）。`name` 可以是翻译键或直接显示文本，`priority` 越大越优先。
 
 ## 版本与依赖
 
 | 游戏版本 | 加载器 | Java | 当前开发依赖 |
 | --- | --- | --- | --- |
-| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.48.0.183 |
-| 1.21.1 | NeoForge 21.1.238 | 21 | JEI 19.44.0.401 |
+| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.58.0.209 |
+| 1.21.1 | NeoForge 21.1.238 | 21 | JEI 19.51.0.418 |
 
 1.20.1 的声明兼容范围从 JEI 15.19.5.99 起，1.21.1 的声明兼容范围从 JEI 19.27.0 起；表中版本是当前开发依赖。
 
@@ -166,6 +176,7 @@ JEI++ is a client-only JEI addon. It adds no blocks, items, recipes, or other ga
 - Final products, total costs, and by-products share a vertical center line; final, intermediate, base, missing, and owned states use different colors.
 - Tree bookmarks are separated into final products, intermediates, and base materials. They remain visible even when already owned, and their quantities are refreshed from live inventory and network snapshots.
 - Plain left-click transfers only the current step's direct inputs. With `automaticCraftingEnabled`, Ctrl+left-click recursively transfers missing steps only.
+- Create's sequenced-assembly recipes include the additional item and fluid inputs for every loop when calculating tree materials.
 - Compatible instant workstations take intermediate outputs automatically; timed machines receive their inputs without pretending that processing is complete.
 - The lower-right `+` on a recipe node performs a JEI-style transfer for that recipe; Shift+click requests the full amount. The tree and other JEI recipe overlays close and the work-block screen is shown afterward.
 - In JEI cheat mode, final and intermediate tree bookmarks do not consume JEI's native one-item/stack cheat clicks.
@@ -211,8 +222,8 @@ The addon supports multiple JEI layout, bookmark, ingredient-list, and renderer 
 
 | Minecraft | Loader | Java | Current development dependency |
 | --- | --- | --- | --- |
-| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.48.0.183 |
-| 1.21.1 | NeoForge 21.1.238 | 21 | JEI 19.44.0.401 |
+| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.58.0.209 |
+| 1.21.1 | NeoForge 21.1.238 | 21 | JEI 19.51.0.418 |
 
 The declared compatibility floor is JEI 15.19.5.99 for 1.20.1 and JEI 19.27.0 for 1.21.1; the table lists the current development dependencies.
 

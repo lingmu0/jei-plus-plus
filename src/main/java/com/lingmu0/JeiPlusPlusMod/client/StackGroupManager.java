@@ -321,13 +321,7 @@ public final class StackGroupManager {
             for (Path file : currentStamps.keySet()) {
                 try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
                     JsonElement root = JsonParser.parseReader(reader);
-                    if (!root.isJsonObject()) {
-                        continue;
-                    }
-                    JsonGroup group = parseGroup(root.getAsJsonObject(), file);
-                    if (group != null) {
-                        loaded.add(group);
-                    }
+                    loaded.addAll(parseGroups(root, file));
                 } catch (Exception exception) {
                     LOGGER.warn("Unable to load JEI++ stack group {}", file, exception);
                 }
@@ -355,6 +349,51 @@ public final class StackGroupManager {
                 });
         }
         return stamps;
+    }
+
+    /**
+     * Accept both the original one-group document and a document containing
+     * several group objects.  The array form is convenient for hand-written
+     * files, while the named object form leaves room for document metadata.
+     */
+    private static List<JsonGroup> parseGroups(JsonElement root, Path file) {
+        if (root == null || root.isJsonNull()) {
+            return List.of();
+        }
+        List<JsonGroup> result = new ArrayList<>();
+        if (root.isJsonArray()) {
+            for (JsonElement element : root.getAsJsonArray()) {
+                addParsedGroup(result, element, file);
+            }
+            return List.copyOf(result);
+        }
+        if (!root.isJsonObject()) {
+            return List.of();
+        }
+
+        JsonObject object = root.getAsJsonObject();
+        JsonElement groups = object.get("groups");
+        if (groups != null && groups.isJsonArray()) {
+            for (JsonElement element : groups.getAsJsonArray()) {
+                addParsedGroup(result, element, file);
+            }
+            return List.copyOf(result);
+        }
+
+        // Keep the legacy one-object format fully compatible.
+        addParsedGroup(result, object, file);
+        return List.copyOf(result);
+    }
+
+    private static void addParsedGroup(List<JsonGroup> destination, JsonElement element, Path file) {
+        if (!element.isJsonObject()) {
+            LOGGER.warn("Ignoring non-object JEI++ stack group in {}", file);
+            return;
+        }
+        JsonGroup group = parseGroup(element.getAsJsonObject(), file);
+        if (group != null) {
+            destination.add(group);
+        }
     }
 
     private static JsonGroup parseGroup(JsonObject object, Path file) {

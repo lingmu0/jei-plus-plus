@@ -813,8 +813,10 @@ final class StorageNetworkIntegration {
         }
         try {
             Class<?> stateType = Class.forName(BBD_CLIENT_STORAGE_STATE);
-            if (!Boolean.TRUE.equals(invokeStaticNoArg(stateType, "available"))
-                || Boolean.TRUE.equals(invokeStaticNoArg(stateType, "isSidebarHidden"))) {
+            // The 0.4.x sidebar can be hidden while its network snapshot is
+            // still valid. Recipe-tree planning must continue to see storage
+            // in that state; visual sorting below handles the hidden case.
+            if (!Boolean.TRUE.equals(invokeStaticNoArg(stateType, "available"))) {
                 return BetterBeyondSnapshot.EMPTY;
             }
             Object entries = invokeStaticNoArg(stateType, "entries");
@@ -1076,6 +1078,16 @@ final class StorageNetworkIntegration {
             Constructor<?> fillConstructor = constructor(fillType, int.class, ItemStack.class, int.class);
             Class<?> handlerType = Class.forName(BBD_NETWORK_HANDLER);
             Method fillRecipe = findCompatibleMethod(handlerType, "fillRecipe", List.class);
+            boolean extendedFill = false;
+            if (fillRecipe == null) {
+                // Newer Better Beyond builds keep the old overload, but use
+                // the extended form when a build removes the compatibility
+                // overload in the future.
+                fillRecipe = findCompatibleMethod(
+                    handlerType, "fillRecipe", List.class, boolean.class, boolean.class
+                );
+                extendedFill = fillRecipe != null;
+            }
             if (fillRecipe == null) {
                 return false;
             }
@@ -1090,7 +1102,11 @@ final class StorageNetworkIntegration {
                     }
                     fills.add(fillConstructor.newInstance(slotIds.get(index), stack, amount));
                 }
-                fillRecipe.invoke(null, fills);
+                if (extendedFill) {
+                    fillRecipe.invoke(null, fills, false, false);
+                } else {
+                    fillRecipe.invoke(null, fills);
+                }
             }
             return true;
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
@@ -1244,6 +1260,9 @@ final class StorageNetworkIntegration {
         }
         AbstractContainerScreen<?> screen = activeContainerScreen();
         if (screen == null || screen.getMenu() != menu) {
+            return;
+        }
+        if (!isBetterBeyondSidebarEnabled(screen)) {
             return;
         }
 
@@ -1493,7 +1512,8 @@ final class StorageNetworkIntegration {
         AbstractContainerScreen<?> screen
     ) {
         if (graphics == null || screen == null || !RecipeTreeFavorites.isActive()
-            || !isBetterBeyondMenu(screen.getMenu())) {
+            || !isBetterBeyondMenu(screen.getMenu())
+            || !isBetterBeyondSidebarEnabled(screen)) {
             return;
         }
         try {
@@ -1573,6 +1593,23 @@ final class StorageNetworkIntegration {
             current = tree.parentScreen();
         }
         return current instanceof AbstractContainerScreen<?> screen ? screen : null;
+    }
+
+    /**
+     * 0.4.x added a client-side sidebar-disabled setting. Older releases do
+     * not expose this accessor, so absence remains compatible and means the
+     * sidebar is treated as enabled.
+     */
+    private static boolean isBetterBeyondSidebarEnabled(AbstractContainerScreen<?> screen) {
+        if (screen == null) {
+            return false;
+        }
+        try {
+            Object value = invokeNoArg(screen, "bbd$isSidebarEnabled");
+            return !(value instanceof Boolean) || (Boolean) value;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
+            return true;
+        }
     }
 
     private static void drawHighlight(GuiGraphics graphics, int x, int y, ItemStack stack) {
