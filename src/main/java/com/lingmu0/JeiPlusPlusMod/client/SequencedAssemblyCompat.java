@@ -56,7 +56,13 @@ final class SequencedAssemblyCompat {
                     continue;
                 }
 
-                List<?> itemIngredients = asList(invokeNoArg(stepRecipe, "getIngredients").orElse(null));
+                // Create's production jars keep the mapped Recipe#getIngredients
+                // name as m_7527_.  The readable name is available in some
+                // dev/runtime mappings, so accept both forms instead of
+                // silently dropping every repeated item ingredient.
+                List<?> itemIngredients = asList(
+                    invokeNoArgAny(stepRecipe, "getIngredients", "m_7527_").orElse(null)
+                );
                 // The first item is the item carried through the assembly line.
                 // Create's category displays it once as the assembly input; only
                 // the remaining ingredients are consumed on every loop.
@@ -135,7 +141,11 @@ final class SequencedAssemblyCompat {
         Object value,
         IIngredientManager ingredientManager
     ) {
-        List<?> fluids = asList(invokeNoArg(value, "getFluids").orElse(null));
+        // Create 6.x exposes FluidIngredient#getMatchingFluidStacks in the
+        // production jar.  Older/dev mappings may expose getFluids instead.
+        List<?> fluids = asList(
+            invokeNoArgAny(value, "getMatchingFluidStacks", "getFluids").orElse(null)
+        );
         List<ITypedIngredient<?>> result = new ArrayList<>();
         for (Object candidate : fluids) {
             if (!(candidate instanceof FluidStack stack) || stack.isEmpty()) {
@@ -151,6 +161,16 @@ final class SequencedAssemblyCompat {
         return invokeNoArg(target, name)
             .filter(Number.class::isInstance)
             .map(value -> ((Number) value).intValue());
+    }
+
+    private static Optional<Object> invokeNoArgAny(Object target, String... names) {
+        for (String name : names) {
+            Optional<Object> value = invokeNoArg(target, name);
+            if (value.isPresent()) {
+                return value;
+            }
+        }
+        return Optional.empty();
     }
 
     private static Optional<Object> invokeNoArg(Object target, String name) {
