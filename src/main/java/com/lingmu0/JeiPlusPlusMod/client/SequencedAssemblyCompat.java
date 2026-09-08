@@ -32,16 +32,16 @@ final class SequencedAssemblyCompat {
         Object recipe,
         IIngredientManager ingredientManager
     ) {
-        if (recipe == null || ingredientManager == null
-            || !recipe.getClass().getName().endsWith(".SequencedAssemblyRecipe")) {
+        Object assemblyRecipe = findAssemblyRecipe(recipe);
+        if (assemblyRecipe == null || ingredientManager == null) {
             return List.of();
         }
 
-        int loops = Math.max(1, invokeInt(recipe, "getLoops").orElse(1));
+        int loops = Math.max(1, invokeInt(assemblyRecipe, "getLoops").orElse(1));
         if (loops <= 1) {
             return List.of();
         }
-        List<?> sequence = asList(invokeNoArg(recipe, "getSequence").orElse(null));
+        List<?> sequence = asList(invokeNoArg(assemblyRecipe, "getSequence").orElse(null));
         if (sequence.isEmpty()) {
             return List.of();
         }
@@ -49,7 +49,9 @@ final class SequencedAssemblyCompat {
         List<List<ITypedIngredient<?>>> result = new ArrayList<>();
         for (int loop = 1; loop < loops; loop++) {
             for (Object sequencedRecipe : sequence) {
-                Object stepRecipe = invokeNoArg(sequencedRecipe, "getRecipe").orElse(null);
+                Object stepRecipe = unwrapRecipe(
+                    invokeNoArg(sequencedRecipe, "getRecipe").orElse(null)
+                );
                 if (stepRecipe == null) {
                     continue;
                 }
@@ -81,6 +83,34 @@ final class SequencedAssemblyCompat {
             }
         }
         return List.copyOf(result);
+    }
+
+    /**
+     * JEI normally supplies the Create recipe directly. A few recipe-viewer
+     * bridges pass a RecipeHolder-like wrapper instead, so accept its value as
+     * well. The shape check also keeps this optional path independent of
+     * Create's package name and loader remapping.
+     */
+    private static Object findAssemblyRecipe(Object recipe) {
+        Object candidate = unwrapRecipe(recipe);
+        if (candidate == null) {
+            return null;
+        }
+        String className = candidate.getClass().getName();
+        if (className.endsWith(".SequencedAssemblyRecipe")
+            || (invokeInt(candidate, "getLoops").isPresent()
+                && !asList(invokeNoArg(candidate, "getSequence").orElse(null)).isEmpty())) {
+            return candidate;
+        }
+        return null;
+    }
+
+    private static Object unwrapRecipe(Object value) {
+        if (value == null) {
+            return null;
+        }
+        Object wrapped = invokeNoArg(value, "value").orElse(null);
+        return wrapped == null || wrapped == value ? value : wrapped;
     }
 
     private static List<ITypedIngredient<?>> itemIngredient(
@@ -125,6 +155,15 @@ final class SequencedAssemblyCompat {
 
     private static Optional<Object> invokeNoArg(Object target, String name) {
         if (target == null) {
+            return Optional.empty();
+        }
+        try {
+            Method method = target.getClass().getMethod(name);
+            method.trySetAccessible();
+            return Optional.ofNullable(method.invoke(target));
+        } catch (NoSuchMethodException ignored) {
+            // Fall through to declared methods in the class hierarchy.
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
             return Optional.empty();
         }
         for (Class<?> type = target.getClass(); type != null; type = type.getSuperclass()) {
