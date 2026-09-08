@@ -4,6 +4,7 @@ import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
 import mezz.jei.api.constants.VanillaTypes;
 import mezz.jei.api.gui.IRecipeLayoutDrawable;
 import mezz.jei.api.gui.ingredient.IRecipeSlotView;
+import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.api.ingredients.subtypes.UidContext;
 import mezz.jei.api.recipe.IFocus;
 import mezz.jei.api.recipe.IFocusFactory;
@@ -1175,26 +1176,20 @@ public final class RecipeTreeData {
                 continue;
             }
             if (role == RecipeIngredientRole.INPUT) {
-                Map<String, ItemStack> unique = new LinkedHashMap<>();
-                for (ItemStack alternative : alternatives) {
-                    unique.putIfAbsent(ingredientKey(alternative), alternative);
-                }
-                List<ItemStack> uniqueAlternatives = List.copyOf(unique.values());
-                String signature = uniqueAlternatives.stream()
-                    .map(stack -> ingredientKey(stack) + "=" + stack.getCount())
-                    .sorted()
-                    .reduce((left, right) -> left + "\u001F" + right)
-                    .orElse("");
-                MutableRecipeInput group = groupedInputs.get(signature);
-                if (group == null) {
-                    groupedInputs.put(signature, new MutableRecipeInput(uniqueAlternatives, inputSlotIndex));
-                } else {
-                    group.merge(uniqueAlternatives, inputSlotIndex);
-                }
+                addRecipeInput(groupedInputs, alternatives, inputSlotIndex);
             } else {
                 for (ItemStack alternative : alternatives) {
                     merge(outputs, alternative);
                 }
+            }
+        }
+        IJeiRuntime runtime = DirectoryRecipePlugin.getJeiRuntime();
+        if (runtime != null) {
+            for (List<ITypedIngredient<?>> ingredients : SequencedAssemblyCompat.repeatedInputSlots(
+                ref.recipe(), runtime.getIngredientManager()
+            )) {
+                List<ItemStack> alternatives = displayedStacks(ingredients, true);
+                addRecipeInput(groupedInputs, alternatives, inputSlotCount++);
             }
         }
         List<RecipeInput> inputs = groupedInputs.values().stream()
@@ -1203,37 +1198,75 @@ public final class RecipeTreeData {
         return new RecipeSnapshot(ref, inputs, inputSlotCount, List.copyOf(outputs.values()));
     }
 
-    private static List<ItemStack> displayedStacks(IRecipeSlotView slot, boolean input) {
+    private static void addRecipeInput(
+        Map<String, MutableRecipeInput> groupedInputs,
+        List<ItemStack> alternatives,
+        int inputSlotIndex
+    ) {
         Map<String, ItemStack> unique = new LinkedHashMap<>();
-        slot.getItemStacks()
-            .filter(item -> !item.isEmpty())
-            .map(ItemStack::copy)
-            .forEach(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
-        slot.getAllIngredients()
-            // A tag/directory slot can expose only its first display stack via
-            // getItemStacks(). Read the complete typed ingredient stream as
-            // well so recursive candidate matching sees every member (for
-            // example spruce logs when oak planks are listed first).
-            .flatMap(ingredient -> ingredient.getIngredient(VanillaTypes.ITEM_STACK).stream())
-            .filter(item -> !item.isEmpty())
-            .map(ItemStack::copy)
-            .forEach(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
-        slot.getAllIngredients()
-            .flatMap(ingredient -> FluidRecipeCompat.representativeContainer(ingredient).stream())
-            .map(FluidRecipeCompat::copyWithDisplay)
-            .forEach(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
-        if (input) {
-            slot.getAllIngredients()
-                .flatMap(ingredient -> FluidRecipeCompat.containerCandidate(ingredient).stream())
-                .forEach(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
+        for (ItemStack alternative : alternatives) {
+            if (alternative != null && !alternative.isEmpty()) {
+                unique.putIfAbsent(ingredientKey(alternative), alternative);
+            }
+        }
+        List<ItemStack> uniqueAlternatives = List.copyOf(unique.values());
+        if (uniqueAlternatives.isEmpty()) {
+            return;
+        }
+        String signature = uniqueAlternatives.stream()
+            .map(stack -> ingredientKey(stack) + "=" + stack.getCount())
+            .sorted()
+            .reduce((left, right) -> left + "\u001F" + right)
+            .orElse("");
+        MutableRecipeInput group = groupedInputs.get(signature);
+        if (group == null) {
+            groupedInputs.put(signature, new MutableRecipeInput(uniqueAlternatives, inputSlotIndex));
+        } else {
+            group.merge(uniqueAlternatives, inputSlotIndex);
+        }
+    }
+
+    private static List<ItemStack> displayedStacks(IRecipeSlotView slot, boolean input) {
+        return displayedStacks(slot.getAllIngredients().toList(), input);
+    }
+
+    private static List<ItemStack> displayedStacks(
+        List<? extends ITypedIngredient<?>> ingredients,
+        boolean input
+    ) {
+        Map<String, ItemStack> unique = new LinkedHashMap<>();
+        for (ITypedIngredient<?> ingredient : ingredients) {
+            if (ingredient == null) {
+                continue;
+            }
+            ingredient.getItemStack()
+                .filter(item -> !item.isEmpty())
+                .map(ItemStack::copy)
+                .ifPresent(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
+            ingredient.getIngredient(VanillaTypes.ITEM_STACK)
+                .filter(item -> !item.isEmpty())
+                .map(ItemStack::copy)
+                .ifPresent(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
+            FluidRecipeCompat.representativeContainer(ingredient)
+                .map(FluidRecipeCompat::copyWithDisplay)
+                .ifPresent(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
+            if (input) {
+                FluidRecipeCompat.containerCandidate(ingredient)
+                    .ifPresent(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
+            }
         }
         if (input && unique.isEmpty()) {
             var player = net.minecraft.client.Minecraft.getInstance().player;
             if (player != null) {
-                slot.getAllIngredients()
-                    .flatMap(ingredient -> FluidRecipeCompat.matchingContainers(player, ingredient).stream())
-                    .map(FluidRecipeCompat::copyWithDisplay)
-                    .forEach(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
+                for (ITypedIngredient<?> ingredient : ingredients) {
+                    if (ingredient == null) {
+                        continue;
+                    }
+                    for (ItemStack stack : FluidRecipeCompat.matchingContainers(player, ingredient)) {
+                        ItemStack displayed = FluidRecipeCompat.copyWithDisplay(stack);
+                        unique.putIfAbsent(ingredientKey(displayed), displayed);
+                    }
+                }
             }
         }
         return List.copyOf(unique.values());

@@ -26,6 +26,7 @@ JEI++ 是一个仅客户端运行的 JEI 附属模组，为 JEI 增加配方目�
 - 默认配方、配方书签和物品书签参与构建，收藏的中间产物也会应用。
 - 制作模式支持目标份数、批量数量、循环保护、深度/节点限制、总耗材、副产物、剩余材料、拖动、缩放和完整视图适配。最终产物、总耗材和副产物共用竖直中心线，最终/中间/基础及缺少/已有状态使用不同颜色。
 - 配方树书签按最终产物、中间产物、基础材料分行显示；即使已有也保留，数量实时读取背包和网络库存。
+- 机械动力序列组装会把每个额外循环中被 JEI 隐藏的物品/流体输入补入配方树，按实际循环次数计算总耗材。
 - 普通左键只转移当前步骤直接材料，不递归；启用 `automaticCraftingEnabled` 后 Ctrl+左键只递归转移缺少的步骤。即时工作方块在可行时取出中间产物，有加工时间的机器只放入材料。
 - 节点工作方块右下角 `+` 执行 JEI 风格的当前配方转移，Shift+点击转移完整数量；完成后关闭配方树和其他 JEI 配方覆盖层并回到工作方块界面。
 - JEI 作弊模式下，配方树书签不拦截最终产物和中间产物的原生拿取一个/一组物品操作。
@@ -90,23 +91,33 @@ JSON 分组示例：
 
 ```json
 {
-  "id": "mypack:shiny_things",
-  "type": "jei_plus_plus:group",
-  "name": "mypack.group.shiny_things",
-  "enabled": true,
-  "priority": 10,
-  "contents": ["minecraft:diamond", "#c:glass_blocks"],
-  "exclusions": ["minecraft:purple_stained_glass"]
+  "groups": [
+    {
+      "id": "mypack:shiny_things",
+      "type": "jei_plus_plus:group",
+      "name": "mypack.group.shiny_things",
+      "enabled": true,
+      "priority": 10,
+      "contents": ["minecraft:diamond", "#c:glass_blocks"],
+      "exclusions": ["minecraft:purple_stained_glass"]
+    },
+    {
+      "id": "mypack:ores",
+      "type": "jei_plus_plus:regex",
+      "regex": "minecraft:.*_ore",
+      "priority": 5
+    }
+  ]
 }
 ```
 
-支持 `jei_plus_plus:group`（物品 ID 或 Tag）、`jei_plus_plus:tag` 和 `jei_plus_plus:regex`（完整 `namespace:path` 匹配）。`name` 可为翻译键或直接文本，`priority` 越大越优先。
+支持旧版单对象格式，也支持顶层数组或 `{ "groups": [...] }` 在同一个 JSON 中写多个分组。支持 `jei_plus_plus:group`（物品 ID 或 Tag）、`jei_plus_plus:tag` 和 `jei_plus_plus:regex`（完整 `namespace:path` 匹配）。`name` 可为翻译键或直接文本，`priority` 越大越优先。
 
 ## 版本与依赖
 
 | 游戏版本 | 加载器 | Java | 当前开发依赖 |
 | --- | --- | --- | --- |
-| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.48.0.183 |
+| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.58.0.209 |
 
 声明的 JEI 兼容范围从 15.19.5.99 起，表中版本是当前开发依赖。
 
@@ -144,7 +155,7 @@ Candidate, layout, inventory/network, and fluid caches reduce repeated scans; re
 
 | Minecraft | Loader | Java | Current development dependency |
 | --- | --- | --- | --- |
-| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.48.0.183 |
+| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.58.0.209 |
 
 The declared JEI compatibility floor is 15.19.5.99; the table lists the current development dependency.
 

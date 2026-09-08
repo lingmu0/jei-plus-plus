@@ -18,6 +18,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.CartographyTableMenu;
@@ -1471,6 +1472,16 @@ public final class RecipeTreeTransfer {
         @Override
         public Optional<ITypedIngredient<?>> getDisplayedIngredient() {
             return ingredients.stream().findFirst();
+        }
+
+        /** Added as an abstract method by JEI 15.58; harmless on older JEI. */
+        public Stream<ITypedIngredient<?>> getDisplayedIngredients() {
+            return ingredients.stream();
+        }
+
+        /** Added as an abstract method by JEI 15.58. */
+        public Optional<TagKey<?>> getTagKey() {
+            return Optional.empty();
         }
 
         @Override public RecipeIngredientRole getRole() { return delegate.getRole(); }

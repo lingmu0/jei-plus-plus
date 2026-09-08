@@ -13,7 +13,6 @@ import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.common.gui.JeiTooltip;
 import mezz.jei.common.platform.Services;
 import mezz.jei.common.util.SafeIngredientUtil;
-import mezz.jei.library.gui.ingredients.TagContentTooltipComponent;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -678,7 +677,8 @@ public final class RecipeTreeScreen extends Screen {
                 .copy().withStyle(ChatFormatting.GRAY));
         });
         if (alternatives.size() > 1) {
-            tooltip.add(new TagContentTooltipComponent<>(renderer, alternatives));
+            JeiTooltipCompat.createTagContent(runtime, renderer, alternatives)
+                .ifPresent(tooltip::add);
         }
         graphics.pose().pushPose();
         graphics.pose().translate(0, 0, 700);
