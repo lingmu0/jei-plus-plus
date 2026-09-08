@@ -7,6 +7,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
@@ -22,7 +23,7 @@ public abstract class IngredientGridWithNavigationModernMixin {
         return CreativeTabGridCompat.reserveRow(this, availableArea);
     }
 
-    @Inject(method = "drawForeground", at = @At("TAIL"), remap = false)
+    @Inject(method = "drawForeground", at = @At("TAIL"), remap = false, require = 0)
     private void jeiPlusPlus$drawCreativeTabs(
         Minecraft minecraft,
         GuiGraphics graphics,
@@ -32,6 +33,37 @@ public abstract class IngredientGridWithNavigationModernMixin {
         CallbackInfo ci
     ) {
         CreativeTabGridCompat.draw(this, graphics, mouseX, mouseY);
+    }
+
+    /** JEI 15.x/19.27-19.41 exposes the same pass as drawOnForeground. */
+    @Inject(method = "drawOnForeground", at = @At("TAIL"), remap = false, require = 0)
+    private void jeiPlusPlus$drawCreativeTabsLegacy(
+        GuiGraphics graphics,
+        int mouseX,
+        int mouseY,
+        CallbackInfo ci
+    ) {
+        if (jeiPlusPlus$hasModernForegroundPass()) {
+            return;
+        }
+        CreativeTabGridCompat.draw(this, graphics, mouseX, mouseY);
+    }
+
+    @Unique
+    private boolean jeiPlusPlus$hasModernForegroundPass() {
+        try {
+            getClass().getDeclaredMethod(
+                "drawForeground",
+                Minecraft.class,
+                GuiGraphics.class,
+                int.class,
+                int.class,
+                float.class
+            );
+            return true;
+        } catch (NoSuchMethodException ignored) {
+            return false;
+        }
     }
 
     @Inject(method = "drawTooltips", at = @At("TAIL"), remap = false)

@@ -28,12 +28,12 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Optional;
 
 @Mixin(value = BookmarkOverlay.class, remap = false)
 public abstract class BookmarkOverlayMixin {
-    @Shadow @Final private IconButton historyButton;
-
     @Shadow @Final private BookmarkList bookmarkList;
 
     @Shadow
@@ -68,7 +68,7 @@ public abstract class BookmarkOverlayMixin {
             ));
             return;
         }
-        ImmutableRect2i history = historyButton.getArea();
+        ImmutableRect2i history = jeiPlusPlus$getHistoryButtonArea();
         if (history.isEmpty()) {
             jeiPlusPlus$treeButton.updateBounds(ImmutableRect2i.EMPTY);
         } else {
@@ -183,6 +183,57 @@ public abstract class BookmarkOverlayMixin {
         return screen instanceof RecipeTreeScreen
             || screen instanceof AbstractContainerScreen<?>
             || screen instanceof mezz.jei.gui.recipes.RecipesGui;
+    }
+
+    /** JEI 15.x uses GuiIconToggleButton; JEI 19.x uses IconButton here. */
+    @Unique
+    private ImmutableRect2i jeiPlusPlus$getHistoryButtonArea() {
+        Object historyButton = jeiPlusPlus$getField(this, "historyButton");
+        if (historyButton == null) {
+            return ImmutableRect2i.EMPTY;
+        }
+        try {
+            Method getArea = historyButton.getClass().getMethod("getArea");
+            Object area = getArea.invoke(historyButton);
+            if (area instanceof ImmutableRect2i immutableArea) {
+                return immutableArea;
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // JEI 15.x stores the bounds in GuiIconToggleButton.area.
+        }
+        Object area = jeiPlusPlus$getField(historyButton, "area");
+        return area instanceof ImmutableRect2i immutableArea
+            ? immutableArea
+            : ImmutableRect2i.EMPTY;
+    }
+
+    @Unique
+    private static Object jeiPlusPlus$getField(Object target, String name) {
+        if (target == null) {
+            return null;
+        }
+        Field field = jeiPlusPlus$findField(target.getClass(), name);
+        if (field == null) {
+            return null;
+        }
+        try {
+            field.setAccessible(true);
+            return field.get(target);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    @Unique
+    private static Field jeiPlusPlus$findField(Class<?> type, String name) {
+        while (type != null) {
+            try {
+                return type.getDeclaredField(name);
+            } catch (NoSuchFieldException ignored) {
+                type = type.getSuperclass();
+            }
+        }
+        return null;
     }
 
     @Unique
