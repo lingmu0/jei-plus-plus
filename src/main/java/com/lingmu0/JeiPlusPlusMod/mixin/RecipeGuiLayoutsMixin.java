@@ -40,7 +40,14 @@ public abstract class RecipeGuiLayoutsMixin {
         com.lingmu0.JeiPlusPlusMod.client.RecipeTreeOverlay.draw((RecipeGuiLayouts) (Object) this, guiGraphics, mouseX, mouseY);
     }
 
-    @Inject(method = "getClickedIngredient", at = @At("HEAD"), cancellable = true, remap = false)
+    /** JEI 15.20 and older kept the click target helper in this class. */
+    @Inject(
+        method = "getClickedIngredient",
+        at = @At("HEAD"),
+        cancellable = true,
+        remap = false,
+        require = 0
+    )
     private static void jeiPlusPlus$directoryClick(
         RecipeSlotUnderMouse slotUnderMouse,
         CallbackInfoReturnable<Optional<IClickableIngredientInternal<?>>> cir
