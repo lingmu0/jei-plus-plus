@@ -29,6 +29,7 @@
     "IngredientGridWithNavigationModernMixin",
     "IntegratedTerminalScreenMixin",
     "Ae2RepoMixin",
+    "Ae2PatternEncodeMixin",
     "RefinedStorageGridViewMixin",
     "RefinedStorageRepositoryMixin",
     "BeyondDimensionsNetMenuMixin",
