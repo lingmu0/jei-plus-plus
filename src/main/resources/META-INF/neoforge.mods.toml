@@ -7,8 +7,8 @@ modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
 authors="${mod_authors}"
-# JEI++ only adds client-side JEI screens and recipe-tree helpers.  A server
-# does not need this mod installed for a client to connect.
+# Core JEI features work client-only. The optional AE2 pattern batch action
+# requires this mod on the server, but a client can still join without it.
 displayTest="IGNORE_ALL_VERSION"
 description='''${mod_description}'''
 

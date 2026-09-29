@@ -1,4 +1,10 @@
 {
+  "jei_plus_plus.ae2.server_required": "服务端未装载 JEI++，AE2 批量制作样板不可用",
+  "jei_plus_plus.ae2.no_tree": "请先选择配方树",
+  "jei_plus_plus.ae2.no_patterns": "配方树中没有可制作的样板",
+  "jei_plus_plus.ae2.no_network": "样板终端未连接到可用的 AE2 网络",
+  "jei_plus_plus.ae2.failed": "批量制作样板失败，请检查服务端日志",
+  "jei_plus_plus.ae2.result": "已制作 %s 张样板，跳过已有 %s 张，无效 %s 张",
   "jei_plus_plus.category.ingredient_directory": "物品目录",
   "jei_plus_plus.creative_tab.all": "全部物品",
   "jei_plus_plus.creative_tab.previous_page": "上一页",

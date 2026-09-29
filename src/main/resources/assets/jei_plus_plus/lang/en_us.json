@@ -1,4 +1,10 @@
 {
+  "jei_plus_plus.ae2.server_required": "Server JEI++ is not installed; AE2 batch patterns are unavailable",
+  "jei_plus_plus.ae2.no_tree": "Select a recipe tree first",
+  "jei_plus_plus.ae2.no_patterns": "No encodable recipes in the tree",
+  "jei_plus_plus.ae2.no_network": "Pattern terminal is not connected to an active AE2 network",
+  "jei_plus_plus.ae2.failed": "Pattern batch failed; check the server log",
+  "jei_plus_plus.ae2.result": "Created %s patterns; skipped %s installed; %s invalid",
   "jei_plus_plus.category.ingredient_directory": "Ingredient directory",
   "jei_plus_plus.creative_tab.all": "All items",
   "jei_plus_plus.creative_tab.previous_page": "Previous page",

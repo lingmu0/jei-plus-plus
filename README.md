@@ -47,6 +47,8 @@ JEI++ 是一个仅客户端运行的 JEI 附属模组，为 JEI 增加配方目�
 
 ### 存储网络集成
 
+AE2 样板终端“制作样板”按钮：Shift+左键按当前配方树自底向上批量制作，并跳过网络中已有的相同编码样板；Ctrl+左键即使已有相同样板也强制制作。未固定候选的合成配方会将整张样板设为“可替换”（AE2 处理样板不支持此开关）。空白样板取自终端空白样板槽，产物进入背包或空的终端输出槽；空白样板耗尽或没有空间时停止。此新增操作要求服务端也安装 JEI++，其他客户端功能不受影响。
+
 JEI++ 通过可选的客户端反射集成读取以下网络中的物品和流体，不要求这些模组成为硬依赖：
 
 - AE2（包括不同版本的客户端终端路径）；
@@ -196,6 +198,8 @@ JEI++ is a client-only JEI addon. It adds no blocks, items, recipes, or other ga
 - 1000 mB equals 1 B. Amounts below 1000 mB use mB; amounts at or above 1000 mB use B with one decimal place. Displayed availability is the actual amount, not a value clamped to the requirement.
 
 ### Storage-network integrations
+
+On AE2's Encode button, Shift+left-click creates the selected tree's patterns from leaves to root and skips identical installed patterns. Ctrl+left-click forces creation even if the network already has them. Unpinned alternatives enable substitution for the entire crafting pattern; processing patterns have no substitution switch. Blanks come from the terminal's blank slot, and results go to inventory or the empty output slot. The batch stops when blanks or space run out. This new action requires server-side JEI++; other client-only features remain available without it.
 
 Optional reflective client integrations can read item and fluid storage from AE2, Refined Storage RS1/RS2, Beyond Dimensions, and Integrated Dynamics/Integrated Terminals without hard dependencies.
 
