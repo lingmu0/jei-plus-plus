@@ -1,6 +1,7 @@
 package com.lingmu0.JeiPlusPlusMod.client;
 
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
+import mezz.jei.common.Internal;
 import mezz.jei.common.gui.JeiTooltip;
 import mezz.jei.gui.overlay.elements.IElement;
 import mezz.jei.gui.util.FocusUtil;
@@ -30,6 +31,7 @@ import java.util.Set;
 import java.util.HashSet;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import org.lwjgl.glfw.GLFW;
 
 /**
  * The list transformation used by the JEI ingredient filter mixin.  Reliable
@@ -39,6 +41,25 @@ import com.mojang.blaze3d.platform.InputConstants;
  */
 public final class IngredientListFeatures {
     private IngredientListFeatures() {
+    }
+
+    public static boolean isGroupElement(IElement<?> element) {
+        return Proxy.isProxyClass(element.getClass())
+            && Proxy.getInvocationHandler(element) instanceof GroupedIngredientElementHandler;
+    }
+
+    public static boolean isAltLeftClick(UserInput input) {
+        return input.getKey().getType() == InputConstants.Type.MOUSE
+            && input.getKey().getValue() == 0
+            && (input.getModifiers() & GLFW.GLFW_MOD_ALT) != 0;
+    }
+
+    private static boolean isCheatModeEnabled() {
+        try {
+            return Internal.getClientToggleState().isCheatItemsEnabled();
+        } catch (RuntimeException ignored) {
+            return false;
+        }
     }
 
     public static List<IElement<?>> transform(
@@ -223,6 +244,10 @@ public final class IngredientListFeatures {
 
         private boolean handleClick(UserInput input) {
             if (input.getKey().getType() == InputConstants.Type.MOUSE && input.getKey().getValue() == 0) {
+                // Let JEI's normal cheat handler give the item unless Alt is held.
+                if (isCheatModeEnabled() && !isAltLeftClick(input)) {
+                    return false;
+                }
                 if (!input.isSimulate()) {
                     source.jeiPlusPlus$toggleGroup(groupKey);
                 }
@@ -246,6 +271,9 @@ public final class IngredientListFeatures {
                         label,
                         elements.size()
                     ));
+                    if (isCheatModeEnabled()) {
+                        ((JeiTooltip) args[0]).add(Component.translatable("jei_plus_plus.group.cheat_hint"));
+                    }
                     yield invokeDelegate(method, args);
                 }
                 case "createRenderOverlay" -> new GroupCountOverlay(elements.size(), expanded);

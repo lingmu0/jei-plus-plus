@@ -11,6 +11,7 @@
   "jei_plus_plus.creative_tab.next_page": "Next page",
   "jei_plus_plus.creative_tab.selector_title": "Select category — left click: select, right click: pin/unpin",
   "jei_plus_plus.group.tooltip": "%s (%s items)",
+  "jei_plus_plus.group.cheat_hint": "Alt+click to expand or collapse in cheat mode",
   "jei_plus_plus.group.nbt": "NBT variants of %s",
   "jei_plus_plus.group.tag": "Tag: %s",
   "jei_plus_plus.group.json": "Custom group: %s",
