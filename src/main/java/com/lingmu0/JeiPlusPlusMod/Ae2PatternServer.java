@@ -16,7 +16,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 /** Server-authoritative AE2 pattern creation, isolated behind an optional reflection bridge. */
@@ -105,7 +104,7 @@ public final class Ae2PatternServer {
         if (plan.inputs().isEmpty() || plan.outputs().isEmpty() || plan.outputs().get(0).isEmpty()) return null;
         Class<?> helper = Class.forName("appeng.api.crafting.PatternDetailsHelper");
         Object recipe = recipe(player, plan.recipeId());
-        // In 1.20.1 RecipeManager.byKey returns the recipe itself. Only
+        // In 1.20.1 RecipeManager.byKey returns an Optional recipe. Only
         // CraftingRecipe can be encoded as an AE2 crafting pattern; calling
         // value() on a smelting or other machine recipe throws and used to
         // count it as invalid instead of reaching the processing fallback.
@@ -146,10 +145,11 @@ public final class Ae2PatternServer {
         return null;
     }
 
-    private static Object recipe(ServerPlayer player, ResourceLocation id) throws ReflectiveOperationException {
+    private static Object recipe(ServerPlayer player, ResourceLocation id) {
         if (id == null) return null;
-        Object found = call(player.serverLevel().getRecipeManager(), "byKey", id);
-        return found instanceof Optional<?> optional ? optional.orElse(null) : found;
+        // Minecraft methods are remapped in production. A string-based reflective
+        // lookup for "byKey" works in dev but fails against the obfuscated game.
+        return player.serverLevel().getRecipeManager().byKey(id).orElse(null);
     }
 
     private static Object itemKey(ItemStack stack) throws ReflectiveOperationException {
