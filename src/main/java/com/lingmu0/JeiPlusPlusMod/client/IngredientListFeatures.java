@@ -31,7 +31,6 @@ import java.util.Set;
 import java.util.HashSet;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import org.lwjgl.glfw.GLFW;
 
 /**
  * The list transformation used by the JEI ingredient filter mixin.  Reliable
@@ -46,12 +45,6 @@ public final class IngredientListFeatures {
     public static boolean isGroupElement(IElement<?> element) {
         return Proxy.isProxyClass(element.getClass())
             && Proxy.getInvocationHandler(element) instanceof GroupedIngredientElementHandler;
-    }
-
-    public static boolean isAltLeftClick(UserInput input) {
-        return input.getKey().getType() == InputConstants.Type.MOUSE
-            && input.getKey().getValue() == 0
-            && (input.getModifiers() & GLFW.GLFW_MOD_ALT) != 0;
     }
 
     private static boolean isCheatModeEnabled() {
@@ -236,8 +229,8 @@ public final class IngredientListFeatures {
 
         private boolean handleClick(UserInput input) {
             if (input.getKey().getType() == InputConstants.Type.MOUSE && input.getKey().getValue() == 0) {
-                // Let JEI's normal cheat handler give the item unless Alt is held.
-                if (isCheatModeEnabled() && !isAltLeftClick(input)) {
+                // In cheat mode, JEI owns the click. R/U still opens the group.
+                if (isCheatModeEnabled()) {
                     return false;
                 }
                 if (!input.isSimulate()) {

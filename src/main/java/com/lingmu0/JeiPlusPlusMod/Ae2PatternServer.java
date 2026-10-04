@@ -29,7 +29,8 @@ public final class Ae2PatternServer {
         if (!menu.getClass().getName().equals("appeng.menu.me.items.PatternEncodingTermMenu")) return;
         int created = 0, existing = 0, invalid = 0;
         try {
-            Object node = call(menu, "getGridNode");
+            // AE2 1.20.1 exposes the terminal node as getNetworkNode().
+            Object node = call(menu, "getNetworkNode");
             if (node == null || !Boolean.TRUE.equals(call(node, "isActive"))) {
                 tell(player, "jei_plus_plus.ae2.no_network");
                 return;
