@@ -9,9 +9,9 @@ import mezz.jei.api.gui.drawable.IDrawable;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.runtime.IRecipesGui;
 import mezz.jei.common.input.IInternalKeyMappings;
-import mezz.jei.gui.input.UserInput;
+import mezz.jei.common.input.UserInput;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -313,15 +313,15 @@ public final class IngredientListFeatures {
         }
 
         @Override
-        public void draw(GuiGraphics guiGraphics, int xOffset, int yOffset) {
+        public void draw(GuiGraphicsExtractor guiGraphics, int xOffset, int yOffset) {
             String label = (expanded ? "-" : "+") + count;
             var pose = guiGraphics.pose();
-            pose.pushPose();
+            pose.pushMatrix();
             // JEI renders item stacks with depth enabled.  Put the count in
             // a higher pose layer so it cannot be hidden by the icon below.
-            pose.translate(0.0D, 0.0D, 300.0D);
-            guiGraphics.drawString(Minecraft.getInstance().font, label, xOffset + 1, yOffset + 8, 0xFFFFFFFF, true);
-            pose.popPose();
+            guiGraphics.nextStratum();
+            guiGraphics.text(Minecraft.getInstance().font, label, xOffset + 1, yOffset + 8, 0xFFFFFFFF, true);
+            pose.popMatrix();
         }
     }
 }

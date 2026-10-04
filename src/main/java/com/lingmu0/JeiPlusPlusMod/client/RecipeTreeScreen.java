@@ -14,7 +14,9 @@ import mezz.jei.common.platform.Services;
 import mezz.jei.common.util.SafeIngredientUtil;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
@@ -260,18 +262,18 @@ public final class RecipeTreeScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         graphics.fill(0, 0, width, height, 0xDD000000);
         RecipeTreeData.Tree tree = RecipeTreeSession.tree();
         if (tree == null) {
             renderWelcome(graphics);
         } else {
-            graphics.pose().pushPose();
+            graphics.pose().pushMatrix();
             // Offsets are expressed in tree coordinates. Applying them after
             // scaling keeps fitting, dragging and hit testing in one system.
-            graphics.pose().translate(width / 2.0f, height / 2.0f, 0);
-            graphics.pose().scale(zoom, zoom, 1.0f);
-            graphics.pose().translate(offsetX, offsetY, 0);
+            graphics.pose().translate(width / 2.0f, height / 2.0f);
+            graphics.pose().scale(zoom, zoom);
+            graphics.pose().translate(offsetX, offsetY);
 
             for (RecipeTreeData.Node node : visibleNodes) {
                 if (node.expanded()) {
@@ -284,7 +286,7 @@ public final class RecipeTreeScreen extends Screen {
                 drawNode(graphics, node, mouseX, mouseY);
             }
 
-            graphics.drawCenteredString(
+            graphics.centeredText(
                 font,
                 Component.translatable("jei_plus_plus.recipe_tree.total_cost"),
                 costCenterX,
@@ -292,7 +294,7 @@ public final class RecipeTreeScreen extends Screen {
                 0xFFFFFF
             );
             if (costs.stream().anyMatch(RenderCost::leftover)) {
-                graphics.drawCenteredString(
+                graphics.centeredText(
                     font,
                     Component.translatable("jei_plus_plus.recipe_tree.leftovers"),
                     costCenterX,
@@ -305,7 +307,7 @@ public final class RecipeTreeScreen extends Screen {
             for (RenderCost cost : costs) {
                 drawCost(graphics, cost);
             }
-            graphics.pose().popPose();
+            graphics.pose().popMatrix();
         }
 
         drawHelp(graphics, mouseX, mouseY);
@@ -315,7 +317,7 @@ public final class RecipeTreeScreen extends Screen {
         renderHoverTooltip(graphics, mouseX, mouseY);
     }
 
-    private void renderInputChoice(GuiGraphics graphics, int mouseX, int mouseY) {
+    private void renderInputChoice(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         List<ItemStack> choices = inputChoices();
         if (choices.isEmpty()) {
             inputChoiceNode = null;
@@ -323,13 +325,13 @@ public final class RecipeTreeScreen extends Screen {
         }
         int panelX = inputChoiceX();
         int panelY = inputChoiceY();
-        graphics.pose().pushPose();
-        graphics.pose().translate(0, 0, 500);
+        graphics.pose().pushMatrix();
+        graphics.nextStratum();
         graphics.fill(0, 0, width, height, 0x78000000);
         graphics.fill(panelX - 1, panelY - 1, panelX + INPUT_CHOICE_WIDTH + 1,
             panelY + INPUT_CHOICE_HEIGHT + 1, 0xFFE0E0E0);
         graphics.fill(panelX, panelY, panelX + INPUT_CHOICE_WIDTH, panelY + INPUT_CHOICE_HEIGHT, 0xF0101010);
-        graphics.drawCenteredString(
+        graphics.centeredText(
             font,
             Component.translatable("jei_plus_plus.recipe_tree.input_choice.title", choices.size()),
             panelX + INPUT_CHOICE_WIDTH / 2,
@@ -353,7 +355,7 @@ public final class RecipeTreeScreen extends Screen {
             ItemStack renderStack = FluidRecipeCompat.copyWithDisplay(choice);
             renderStack.setCount(1);
             if (!FluidRecipeCompat.render(graphics, renderStack, slotX + 1, slotY + 1)) {
-                graphics.renderItem(renderStack, slotX + 1, slotY + 1);
+                graphics.item(renderStack, slotX + 1, slotY + 1);
             }
         }
 
@@ -364,16 +366,16 @@ public final class RecipeTreeScreen extends Screen {
         drawChoicePageButton(graphics, panelX + INPUT_CHOICE_WIDTH - 23, footerY, ">",
             inputChoicePage + 1 < pageCount,
             contains(mouseX, mouseY, panelX + INPUT_CHOICE_WIDTH - 23, footerY, 16, 14));
-        graphics.drawCenteredString(font, (inputChoicePage + 1) + "/" + pageCount,
+        graphics.centeredText(font, (inputChoicePage + 1) + "/" + pageCount,
             panelX + INPUT_CHOICE_WIDTH / 2, footerY + 3, 0xFFD0D0D0);
         int closeX = panelX + INPUT_CHOICE_WIDTH - 17;
-        graphics.drawCenteredString(font, "x", closeX + 6, panelY + 7,
+        graphics.centeredText(font, "x", closeX + 6, panelY + 7,
             contains(mouseX, mouseY, closeX, panelY + 4, 12, 12) ? 0xFFFF7777 : 0xFFD0D0D0);
-        graphics.pose().popPose();
+        graphics.pose().popMatrix();
     }
 
     private void drawChoicePageButton(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int x,
         int y,
         String text,
@@ -383,19 +385,19 @@ public final class RecipeTreeScreen extends Screen {
         int border = enabled && hovered ? 0xFF8099FF : 0xFF707070;
         graphics.fill(x, y, x + 16, y + 14, border);
         graphics.fill(x + 1, y + 1, x + 15, y + 13, 0xFF202020);
-        graphics.drawCenteredString(font, text, x + 8, y + 3, enabled ? 0xFFFFFFFF : 0xFF666666);
+        graphics.centeredText(font, text, x + 8, y + 3, enabled ? 0xFFFFFFFF : 0xFF666666);
     }
 
-    private void renderWelcome(GuiGraphics graphics) {
-        graphics.drawCenteredString(font, title, width / 2, height / 2 - 36, 0xFFFFFF);
-        graphics.drawCenteredString(
+    private void renderWelcome(GuiGraphicsExtractor graphics) {
+        graphics.centeredText(font, title, width / 2, height / 2 - 36, 0xFFFFFF);
+        graphics.centeredText(
             font,
             Component.translatable("jei_plus_plus.recipe_tree.empty"),
             width / 2,
             height / 2 - 12,
             0xBFD0D0D0
         );
-        graphics.drawCenteredString(
+        graphics.centeredText(
             font,
             Component.translatable("jei_plus_plus.recipe_tree.empty_hint"),
             width / 2,
@@ -404,7 +406,7 @@ public final class RecipeTreeScreen extends Screen {
         );
     }
 
-    private void drawConnection(GuiGraphics graphics, RecipeTreeData.Node parent, RecipeTreeData.Node child) {
+    private void drawConnection(GuiGraphicsExtractor graphics, RecipeTreeData.Node parent, RecipeTreeData.Node child) {
         int y1 = parent.y() + NODE_HEIGHT / 2;
         int y2 = child.y() - NODE_HEIGHT / 2;
         int middle = (y1 + y2) / 2;
@@ -414,7 +416,7 @@ public final class RecipeTreeScreen extends Screen {
         graphics.fill(Math.min(parent.x(), child.x()), middle, Math.max(parent.x(), child.x()) + 1, middle + 1, color);
     }
 
-    private void drawNode(GuiGraphics graphics, RecipeTreeData.Node node, int mouseX, int mouseY) {
+    private void drawNode(GuiGraphicsExtractor graphics, RecipeTreeData.Node node, int mouseX, int mouseY) {
         int width = nodeWidth(node);
         int left = node.x() - width / 2;
         int top = node.y() - NODE_HEIGHT / 2;
@@ -439,7 +441,7 @@ public final class RecipeTreeScreen extends Screen {
         ItemStack renderStack = FluidRecipeCompat.copyWithDisplay(node.stack());
         renderStack.setCount(1);
         if (!FluidRecipeCompat.render(graphics, renderStack, itemX, itemY)) {
-            graphics.renderItem(renderStack, itemX, itemY);
+            graphics.item(renderStack, itemX, itemY);
         }
         drawAmount(graphics, formatNodeAmount(node.stack(), node.amount()), itemX, itemY, amountColor(node));
         if (node.hasAlternatives()) {
@@ -455,7 +457,7 @@ public final class RecipeTreeScreen extends Screen {
         }
     }
 
-    private void drawAlternativeMarker(GuiGraphics graphics, RecipeTreeData.Node node, int itemX, int itemY) {
+    private void drawAlternativeMarker(GuiGraphicsExtractor graphics, RecipeTreeData.Node node, int itemX, int itemY) {
         int x = itemX + 10;
         int y = itemY - 2;
         int color = node.explicitChoice() ? 0xFF55FFAA : 0xFF80A8FF;
@@ -463,17 +465,17 @@ public final class RecipeTreeScreen extends Screen {
     }
 
     /** Draws the small plus glyph used by both candidate and transfer actions. */
-    private void drawPlusMarker(GuiGraphics graphics, int x, int y, int color) {
-        graphics.pose().pushPose();
-        graphics.pose().translate(0, 0, 400);
+    private void drawPlusMarker(GuiGraphicsExtractor graphics, int x, int y, int color) {
+        graphics.pose().pushMatrix();
+        graphics.nextStratum();
         graphics.fill(x, y, x + 7, y + 7, 0xE0101010);
         graphics.fill(x + 1, y + 3, x + 6, y + 4, color);
         graphics.fill(x + 3, y + 1, x + 4, y + 6, color);
-        graphics.pose().popPose();
+        graphics.pose().popMatrix();
     }
 
     private void drawTransferButton(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         RecipeTreeData.Node node,
         int left,
         int top,
@@ -488,7 +490,7 @@ public final class RecipeTreeScreen extends Screen {
         drawPlusMarker(graphics, x, y, 0xFF80A8FF);
     }
 
-    private void drawCategoryFallback(GuiGraphics graphics, int x, int y, int color) {
+    private void drawCategoryFallback(GuiGraphicsExtractor graphics, int x, int y, int color) {
         for (int row = 0; row < 3; row++) {
             for (int column = 0; column < 3; column++) {
                 graphics.fill(x + column * 5, y + row * 5, x + column * 5 + 3, y + row * 5 + 3, color);
@@ -496,7 +498,7 @@ public final class RecipeTreeScreen extends Screen {
         }
     }
 
-    private void drawModeButton(GuiGraphics graphics, RecipeTreeData.Tree tree, int mouseX, int mouseY) {
+    private void drawModeButton(GuiGraphicsExtractor graphics, RecipeTreeData.Tree tree, int mouseX, int mouseY) {
         int[] treeMouse = treeMouse(mouseX, mouseY);
         boolean hovered = containsTreeArea(treeMouse[0], treeMouse[1], modeX, modeY, 16, 16);
         int color = hovered ? 0xFF8099FF : 0xFFFFFFFF;
@@ -510,19 +512,19 @@ public final class RecipeTreeScreen extends Screen {
         }
     }
 
-    private void drawBatchLabel(GuiGraphics graphics, RecipeTreeData.Tree tree, int mouseX, int mouseY) {
+    private void drawBatchLabel(GuiGraphicsExtractor graphics, RecipeTreeData.Tree tree, int mouseX, int mouseY) {
         int[] treeMouse = treeMouse(mouseX, mouseY);
         int color = containsTreeArea(treeMouse[0], treeMouse[1], batchX, batchY, batchWidth, 22)
             ? 0xFF8099FF
             : 0xFFFFFFFF;
-        graphics.drawString(font, "x" + tree.batches(), batchX + 6, batchY + 7, color, true);
+        graphics.text(font, "x" + tree.batches(), batchX + 6, batchY + 7, color, true);
     }
 
-    private void drawCost(GuiGraphics graphics, RenderCost renderCost) {
+    private void drawCost(GuiGraphicsExtractor graphics, RenderCost renderCost) {
         ItemStack stack = FluidRecipeCompat.copyWithDisplay(renderCost.cost.stack());
         stack.setCount(1);
         if (!FluidRecipeCompat.render(graphics, stack, renderCost.x, renderCost.y)) {
-            graphics.renderItem(stack, renderCost.x, renderCost.y);
+            graphics.item(stack, renderCost.x, renderCost.y);
         }
         drawAmount(
             graphics,
@@ -533,26 +535,27 @@ public final class RecipeTreeScreen extends Screen {
         );
     }
 
-    private void drawAmount(GuiGraphics graphics, String text, int itemX, int itemY, int color) {
+    private void drawAmount(GuiGraphicsExtractor graphics, String text, int itemX, int itemY, int color) {
         if (text.isEmpty()) {
             return;
         }
         int textWidth = Math.max(1, font.width(text));
         float scale = Math.min(1.0f, 16.0f / textWidth);
-        graphics.pose().pushPose();
-        graphics.pose().translate(itemX + 17, itemY + 9, 300);
-        graphics.pose().scale(scale, scale, 1.0f);
-        graphics.drawString(font, text, -textWidth, 0, color, true);
-        graphics.pose().popPose();
+        graphics.pose().pushMatrix();
+        graphics.nextStratum();
+        graphics.pose().translate(itemX + 17, itemY + 9);
+        graphics.pose().scale(scale, scale);
+        graphics.text(font, text, -textWidth, 0, color, true);
+        graphics.pose().popMatrix();
     }
 
-    private void drawHelp(GuiGraphics graphics, int mouseX, int mouseY) {
+    private void drawHelp(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         int x = width - 18;
         int y = height - 18;
         int color = contains(mouseX, mouseY, x, y, 16, 16) ? 0xFF8099FF : 0xFFFFFFFF;
-        graphics.drawCenteredString(font, "?", x + 8, y + 4, color);
+        graphics.centeredText(font, "?", x + 8, y + 4, color);
         if (contains(mouseX, mouseY, x, y, 16, 16)) {
-            graphics.renderTooltip(
+            graphics.setTooltipForNextFrame(
                 font,
                 font.split(Component.translatable("jei_plus_plus.recipe_tree.help"), Math.min(280, width - 30)),
                 mouseX,
@@ -561,30 +564,30 @@ public final class RecipeTreeScreen extends Screen {
         }
     }
 
-    private void renderHoverTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+    private void renderHoverTooltip(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         if (inputChoiceNode != null) {
             ItemStack choice = hoveredInputChoice(mouseX, mouseY);
             if (!choice.isEmpty()) {
-                graphics.pose().pushPose();
-                graphics.pose().translate(0, 0, 700);
+                graphics.pose().pushMatrix();
+                graphics.nextStratum();
                 if (!FluidRecipeCompat.renderTooltip(graphics, choice, mouseX, mouseY)) {
-                    graphics.renderTooltip(font, choice, mouseX, mouseY);
+                    graphics.setTooltipForNextFrame(font, choice, mouseX, mouseY);
                 }
-                graphics.pose().popPose();
+                graphics.pose().popMatrix();
             }
             return;
         }
         RecipeTreeData.Node node = hoveredNode(mouseX, mouseY);
         if (node != null) {
             if (isTransferArea(node, mouseX, mouseY)) {
-                graphics.renderTooltip(
+                graphics.setTooltipForNextFrame(
                     font,
                     Component.translatable("jei_plus_plus.recipe_tree.transfer"),
                     mouseX,
                     mouseY
                 );
             } else if (node.isOutputChoice() && isAlternativeArea(node, mouseX, mouseY)) {
-                graphics.renderTooltip(
+                graphics.setTooltipForNextFrame(
                     font,
                     Component.translatable("jei_plus_plus.recipe_tree.output_choice", node.alternatives().size()),
                     mouseX,
@@ -594,14 +597,14 @@ public final class RecipeTreeScreen extends Screen {
                 String key = node.explicitChoice()
                     ? "jei_plus_plus.recipe_tree.input_choice.selected"
                     : "jei_plus_plus.recipe_tree.input_choice";
-                graphics.renderTooltip(font, Component.translatable(key, node.alternatives().size()), mouseX, mouseY);
+                graphics.setTooltipForNextFrame(font, Component.translatable(key, node.alternatives().size()), mouseX, mouseY);
             } else if ((hasUnfixedAlternatives(node) || node.isOutputChoice()) && isItemArea(node, mouseX, mouseY)) {
                 renderAlternativeTooltip(graphics, node, mouseX, mouseY);
             } else if (isCategoryArea(node, mouseX, mouseY) && node.recipe() != null) {
-                graphics.renderTooltip(font, node.recipe().ref().category().getTitle(), mouseX, mouseY);
+                graphics.setTooltipForNextFrame(font, node.recipe().ref().category().getTitle(), mouseX, mouseY);
             } else {
                 if (!FluidRecipeCompat.renderTooltip(graphics, node.stack(), mouseX, mouseY)) {
-                    graphics.renderTooltip(font, node.stack(), mouseX, mouseY);
+                    graphics.setTooltipForNextFrame(font, node.stack(), mouseX, mouseY);
                 }
             }
             return;
@@ -609,17 +612,17 @@ public final class RecipeTreeScreen extends Screen {
         int[] treeMouse = treeMouse(mouseX, mouseY);
         RecipeTreeData.Tree tree = RecipeTreeSession.tree();
         if (tree != null && containsTreeArea(treeMouse[0], treeMouse[1], batchX, batchY, batchWidth, 22)) {
-            graphics.renderTooltip(font, Component.translatable("jei_plus_plus.recipe_tree.batch", tree.batches()), mouseX, mouseY);
+            graphics.setTooltipForNextFrame(font, Component.translatable("jei_plus_plus.recipe_tree.batch", tree.batches()), mouseX, mouseY);
         } else if (tree != null && containsTreeArea(treeMouse[0], treeMouse[1], modeX, modeY, 16, 16)) {
             String key = tree.craftingMode()
                 ? "jei_plus_plus.recipe_tree.mode.craft"
                 : "jei_plus_plus.recipe_tree.mode.view";
-            graphics.renderTooltip(font, Component.translatable(key), mouseX, mouseY);
+            graphics.setTooltipForNextFrame(font, Component.translatable(key), mouseX, mouseY);
         } else {
             for (RenderCost cost : costs) {
                 if (containsTreeArea(treeMouse[0], treeMouse[1], cost.x, cost.y, 16, 16)) {
                     if (!FluidRecipeCompat.renderTooltip(graphics, cost.cost.stack(), mouseX, mouseY)) {
-                        graphics.renderTooltip(font, cost.cost.stack(), mouseX, mouseY);
+                        graphics.setTooltipForNextFrame(font, cost.cost.stack(), mouseX, mouseY);
                     }
                     return;
                 }
@@ -629,7 +632,7 @@ public final class RecipeTreeScreen extends Screen {
 
     /** Render the same rich tag/candidate tooltip used by JEI recipe slots. */
     private void renderAlternativeTooltip(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         RecipeTreeData.Node node,
         int mouseX,
         int mouseY
@@ -637,7 +640,7 @@ public final class RecipeTreeScreen extends Screen {
         IJeiRuntime runtime = DirectoryRecipePlugin.getJeiRuntime();
         if (runtime == null || node == null) {
             if (node == null || !FluidRecipeCompat.renderTooltip(graphics, node.stack(), mouseX, mouseY)) {
-                graphics.renderTooltip(font, node == null ? ItemStack.EMPTY : node.stack(), mouseX, mouseY);
+                graphics.setTooltipForNextFrame(font, node == null ? ItemStack.EMPTY : node.stack(), mouseX, mouseY);
             }
             return;
         }
@@ -657,7 +660,7 @@ public final class RecipeTreeScreen extends Screen {
         var typed = runtime.getIngredientManager()
             .createTypedIngredient(VanillaTypes.ITEM_STACK, displayed);
         if (typed.isEmpty()) {
-            graphics.renderTooltip(font, displayed, mouseX, mouseY);
+            graphics.setTooltipForNextFrame(font, displayed, mouseX, mouseY);
             return;
         }
 
@@ -677,10 +680,10 @@ public final class RecipeTreeScreen extends Screen {
             JeiTooltipCompat.createTagContent(runtime, renderer, alternatives)
                 .ifPresent(tooltip::add);
         }
-        graphics.pose().pushPose();
-        graphics.pose().translate(0, 0, 700);
+        graphics.pose().pushMatrix();
+        graphics.nextStratum();
         tooltip.draw(graphics, mouseX, mouseY);
-        graphics.pose().popPose();
+        graphics.pose().popMatrix();
     }
 
     private RecipeTreeData.Node hoveredNode(double mouseX, double mouseY) {
@@ -729,7 +732,10 @@ public final class RecipeTreeScreen extends Screen {
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClicked) {
+        double mouseX = event.x();
+        double mouseY = event.y();
+        int button = event.button();
         // JEI draws the global tree toggle on top of this screen.  The normal
         // JEI input handler is not reached when Screen.mouseClicked consumes
         // the event, so handle the same hit box here as well.
@@ -766,7 +772,7 @@ public final class RecipeTreeScreen extends Screen {
         RecipeTreeData.Node node = hoveredNode(mouseX, mouseY);
         if (node != null) {
             if (button == 0 && isTransferArea(node, mouseX, mouseY)) {
-                boolean maxTransfer = hasShiftDown();
+                boolean maxTransfer = Minecraft.getInstance().hasShiftDown();
                 tree.directTransferStep(node).ifPresent(step -> {
                     RecipeTreeTransfer.transfer(step, false, maxTransfer);
                 });
@@ -788,7 +794,7 @@ public final class RecipeTreeScreen extends Screen {
                 return true;
             }
             if (button == 1) {
-                if (hasShiftDown()) {
+                if (Minecraft.getInstance().hasShiftDown()) {
                     RecipeTreeSession.clearResolution(node);
                     rebuildLayout(false);
                 } else if (!node.children().isEmpty()) {
@@ -798,12 +804,12 @@ public final class RecipeTreeScreen extends Screen {
                 return true;
             }
             if (button == 0) {
-                if (!hasShiftDown() && hasUnfixedAlternatives(node)
+                if (!Minecraft.getInstance().hasShiftDown() && hasUnfixedAlternatives(node)
                     && !node.isOutputChoice() && isItemArea(node, mouseX, mouseY)) {
                     showCandidateDirectory(node);
                 } else if (isCategoryArea(node, mouseX, mouseY) && node.recipe() != null) {
                     showExactRecipe(node);
-                } else if (hasShiftDown()) {
+                } else if (Minecraft.getInstance().hasShiftDown()) {
                      // Shift-clicking a canvas node only resolves its first
                      // non-excluded candidate. Recursive crafting is
                      // deliberately owned by the synthetic recipe bookmark.
@@ -820,7 +826,7 @@ public final class RecipeTreeScreen extends Screen {
             dragging = true;
             return true;
         }
-        return super.mouseClicked(mouseX, mouseY, button);
+        return super.mouseClicked(event, doubleClicked);
     }
 
     private boolean isGlobalTreeButton(double mouseX, double mouseY) {
@@ -987,16 +993,17 @@ public final class RecipeTreeScreen extends Screen {
     }
 
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+    public boolean mouseReleased(MouseButtonEvent event) {
         dragging = false;
         if (inputChoiceNode != null) {
             return true;
         }
-        return super.mouseReleased(mouseX, mouseY, button);
+        return super.mouseReleased(event);
     }
 
     @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+    public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+        int button = event.button();
         if (inputChoiceNode != null) {
             return true;
         }
@@ -1005,7 +1012,7 @@ public final class RecipeTreeScreen extends Screen {
             offsetY += (float) (dragY / zoom);
             return true;
         }
-        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+        return super.mouseDragged(event, dragX, dragY);
     }
 
     @Override
@@ -1018,11 +1025,11 @@ public final class RecipeTreeScreen extends Screen {
         int[] point = treeMouse(mouseX, mouseY);
         if (tree != null && containsTreeArea(point[0], point[1], batchX, batchY, batchWidth, 22) && scrollY != 0) {
             long adjustment;
-            if (hasControlDown()) {
+            if (Minecraft.getInstance().hasControlDown()) {
                 adjustment = scrollY > 0 ? tree.batches() : -Math.max(1, tree.batches() / 2);
             } else {
                 adjustment = scrollY > 0 ? 1 : -1;
-                if (hasShiftDown()) {
+                if (Minecraft.getInstance().hasShiftDown()) {
                     adjustment *= 16;
                 }
             }
@@ -1049,12 +1056,13 @@ public final class RecipeTreeScreen extends Screen {
     }
 
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+    public boolean keyPressed(KeyEvent event) {
+        int keyCode = event.key();
         if (inputChoiceNode != null && keyCode == 256) {
             inputChoiceNode = null;
             return true;
         }
-        if (keyCode == 256 || Minecraft.getInstance().options.keyInventory.matches(keyCode, scanCode)) {
+        if (keyCode == 256 || Minecraft.getInstance().options.keyInventory.matches(event)) {
             onClose();
             return true;
         }
@@ -1062,12 +1070,12 @@ public final class RecipeTreeScreen extends Screen {
             rebuildLayout(true);
             return true;
         }
-        if (hasControlDown() && keyCode == 67) {
+        if (Minecraft.getInstance().hasControlDown() && keyCode == 67) {
             RecipeTreeSession.clear();
             rebuildLayout(true);
             return true;
         }
-        return super.keyPressed(keyCode, scanCode, modifiers);
+        return super.keyPressed(event);
     }
 
     @Override

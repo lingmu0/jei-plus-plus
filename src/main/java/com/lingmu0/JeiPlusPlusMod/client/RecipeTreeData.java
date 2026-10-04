@@ -15,7 +15,7 @@ import mezz.jei.api.recipe.RecipeType;
 import mezz.jei.api.recipe.category.IRecipeCategory;
 import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
@@ -988,7 +988,7 @@ public final class RecipeTreeData {
         if (category == null) {
             return false;
         }
-        ResourceLocation recipeType = category.getRecipeType().getUid();
+        Identifier recipeType = category.getRecipeType().getUid();
         return !recipeType.getPath().startsWith("tag_recipes/")
             && !JeiPlusPlusConfig.isRecipeTypeDisabled(recipeType);
     }
@@ -1146,7 +1146,7 @@ public final class RecipeTreeData {
             try {
                 return runtime.getIngredientManager()
                     .getIngredientHelper(VanillaTypes.ITEM_STACK)
-                    .getUniqueId(stack, UidContext.Ingredient);
+                    .getUid(stack, UidContext.Ingredient).toString();
             } catch (RuntimeException ignored) {
                 // Registry fallback keeps startup/reload paths safe.
             }
@@ -1182,7 +1182,7 @@ public final class RecipeTreeData {
         IFocus<?> focus,
         List<RecipeRef> result
     ) {
-        RecipeType type = category.getRecipeType();
+        mezz.jei.api.recipe.types.IRecipeType type = category.getRecipeType();
         manager.createRecipeLookup(type)
             .limitFocus((Collection) List.of(focus))
             .get()
@@ -1364,7 +1364,7 @@ public final class RecipeTreeData {
 
     private static RecipeRef ref(IRecipeCategory<?> category, Object recipe) {
         @SuppressWarnings({"rawtypes", "unchecked"})
-        ResourceLocation id = ((IRecipeCategory) category).getRegistryName(recipe);
+        Identifier id = ((IRecipeCategory) category).getRegistryName(recipe);
         String registryId = id == null ? "" : id.toString();
         String identity = registryId.isEmpty() ? "runtime/" + System.identityHashCode(recipe) : registryId;
         String key = category.getRecipeType().getUid() + "|" + identity;

@@ -3,11 +3,12 @@ package com.lingmu0.JeiPlusPlusMod.mixin;
 import com.lingmu0.JeiPlusPlusMod.client.IngredientListFeatures;
 import mezz.jei.common.config.IClientToggleState;
 import mezz.jei.common.input.IInternalKeyMappings;
+import mezz.jei.api.gui.handlers.IGuiProperties;
 import mezz.jei.gui.input.CombinedRecipeFocusSource;
 import mezz.jei.gui.input.IClickableIngredientInternal;
-import mezz.jei.gui.input.IUserInputHandler;
-import mezz.jei.gui.input.UserInput;
-import mezz.jei.gui.input.handlers.SameElementInputHandler;
+import mezz.jei.common.input.IUserInputHandler;
+import mezz.jei.common.input.UserInput;
+import mezz.jei.common.input.handlers.SameElementInputHandler;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import org.spongepowered.asm.mixin.Final;
@@ -30,6 +31,7 @@ public abstract class CheatInputHandlerMixin {
     @Inject(method = "handleUserInput", at = @At("HEAD"), cancellable = true, require = 0, remap = false)
     private void jeiPlusPlus$expandGroupInCheatMode(
         Screen screen,
+        IGuiProperties guiProperties,
         UserInput input,
         IInternalKeyMappings keyMappings,
         CallbackInfoReturnable<Optional<IUserInputHandler>> cir

@@ -2,7 +2,7 @@ package com.lingmu0.JeiPlusPlusMod.client;
 
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.CreativeModeTab;
 
 import java.util.ArrayList;
@@ -36,7 +36,7 @@ public final class CreativeTabOrder {
     }
 
     public static String getId(CreativeModeTab tab) {
-        ResourceLocation id = BuiltInRegistries.CREATIVE_MODE_TAB.getKey(tab);
+        Identifier id = BuiltInRegistries.CREATIVE_MODE_TAB.getKey(tab);
         return id == null ? null : id.toString();
     }
 

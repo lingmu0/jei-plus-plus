@@ -3,7 +3,7 @@ package com.lingmu0.JeiPlusPlusMod.mixin;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeFavorites;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeTransfer;
 import com.lingmu0.JeiPlusPlusMod.client.CreativeTabGridCompat;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.entity.player.Inventory;
@@ -15,9 +15,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(AbstractContainerScreen.class)
 public abstract class AbstractContainerScreenMixin {
-    @Inject(method = "renderTooltip", at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(method = "extractTooltip", at = @At("HEAD"), cancellable = true, require = 0)
     private void jeiPlusPlus$hideContainerTooltipWhileSelectorOpen(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         CallbackInfo ci
@@ -27,9 +27,9 @@ public abstract class AbstractContainerScreenMixin {
         }
     }
 
-    @Inject(method = "render", at = @At("HEAD"))
+    @Inject(method = "extractRenderState", at = @At("HEAD"))
     private void jeiPlusPlus$updateRecipeTreeCrafting(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         float partialTick,
@@ -44,10 +44,12 @@ public abstract class AbstractContainerScreenMixin {
         RecipeTreeTransfer.tick((Screen) (Object) this);
     }
 
-    @Inject(method = "renderSlot", at = @At("TAIL"))
+    @Inject(method = "extractSlot", at = @At("TAIL"))
     private void jeiPlusPlus$highlightRequiredInventoryStack(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         Slot slot,
+        int mouseX,
+        int mouseY,
         CallbackInfo ci
     ) {
         if (slot.getItem().isEmpty()) {
@@ -70,14 +72,14 @@ public abstract class AbstractContainerScreenMixin {
         }
         int fill = finalProduct ? 0x4433CC66 : (intermediate ? 0x44FF2222 : 0x3300BBFF);
         int border = finalProduct ? 0xDD66FF88 : (intermediate ? 0xDDFF5555 : 0xCC55DDFF);
-        graphics.pose().pushPose();
-        graphics.pose().translate(0, 0, 300);
+        graphics.pose().pushMatrix();
+        graphics.nextStratum();
         graphics.fill(slot.x, slot.y, slot.x + 16, slot.y + 16, fill);
         graphics.fill(slot.x, slot.y, slot.x + 16, slot.y + 1, border);
         graphics.fill(slot.x, slot.y + 15, slot.x + 16, slot.y + 16, border);
         graphics.fill(slot.x, slot.y, slot.x + 1, slot.y + 16, border);
         graphics.fill(slot.x + 15, slot.y, slot.x + 16, slot.y + 16, border);
-        graphics.pose().popPose();
+        graphics.pose().popMatrix();
     }
 
     /**
@@ -85,9 +87,9 @@ public abstract class AbstractContainerScreenMixin {
      * override, so the renderSlot injection above does not see them. Use the
      * optional slot's runtime class name to keep every integration optional.
      */
-    @Inject(method = "render", at = @At("TAIL"))
+    @Inject(method = "extractRenderState", at = @At("TAIL"))
     private void jeiPlusPlus$highlightNetworkStorage(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         float partialTick,
@@ -115,14 +117,14 @@ public abstract class AbstractContainerScreenMixin {
             // the screen's GUI origin before drawing the overlay.
             int x = screen.getGuiLeft() + slot.x;
             int y = screen.getGuiTop() + slot.y;
-            graphics.pose().pushPose();
-            graphics.pose().translate(0, 0, 300);
+            graphics.pose().pushMatrix();
+            graphics.nextStratum();
             graphics.fill(x, y, x + 16, y + 16, fill);
             graphics.fill(x, y, x + 16, y + 1, border);
             graphics.fill(x, y + 15, x + 16, y + 16, border);
             graphics.fill(x, y, x + 1, y + 16, border);
             graphics.fill(x + 15, y, x + 16, y + 16, border);
-            graphics.pose().popPose();
+            graphics.pose().popMatrix();
         }
         RecipeTreeFavorites.renderVirtualNetworkHighlights(graphics, screen);
     }

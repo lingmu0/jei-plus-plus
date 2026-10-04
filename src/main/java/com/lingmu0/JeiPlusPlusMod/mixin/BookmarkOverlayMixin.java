@@ -8,16 +8,17 @@ import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeSession;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeSidebarButtonController;
 import com.mojang.blaze3d.platform.InputConstants;
 import mezz.jei.common.input.IInternalKeyMappings;
+import mezz.jei.api.gui.handlers.IGuiProperties;
 import mezz.jei.common.util.ImmutableRect2i;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.elements.IconButton;
-import mezz.jei.gui.input.IUserInputHandler;
-import mezz.jei.gui.input.UserInput;
-import mezz.jei.gui.input.handlers.CombinedInputHandler;
+import mezz.jei.common.input.IUserInputHandler;
+import mezz.jei.common.input.UserInput;
+import mezz.jei.common.input.handlers.CombinedInputHandler;
 import mezz.jei.gui.input.handlers.ProxyInputHandler;
 import mezz.jei.gui.overlay.bookmarks.BookmarkOverlay;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import org.spongepowered.asm.mixin.Final;
@@ -97,7 +98,7 @@ public abstract class BookmarkOverlayMixin {
     @Inject(method = "drawScreen", at = @At("TAIL"), remap = false)
     private void jeiPlusPlus$drawTreeButton(
         Minecraft minecraft,
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         float partialTicks,
@@ -110,7 +111,7 @@ public abstract class BookmarkOverlayMixin {
     @Inject(method = "drawForeground", at = @At("TAIL"), require = 0, remap = false)
     private void jeiPlusPlus$drawTreeButtonModern(
         Minecraft minecraft,
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         float partialTicks,
@@ -122,7 +123,7 @@ public abstract class BookmarkOverlayMixin {
     @Unique
     private void jeiPlusPlus$drawTreeButton(
         Minecraft minecraft,
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         float partialTicks
@@ -139,7 +140,7 @@ public abstract class BookmarkOverlayMixin {
     @Inject(method = "drawTooltips", at = @At("TAIL"), remap = false)
     private void jeiPlusPlus$drawTreeButtonTooltip(
         Minecraft minecraft,
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         CallbackInfo ci
@@ -153,7 +154,7 @@ public abstract class BookmarkOverlayMixin {
     @Inject(method = "drawTooltips", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
     private void jeiPlusPlus$hideBookmarkTooltipsWhileSelectorOpen(
         Minecraft minecraft,
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         CallbackInfo ci
@@ -255,6 +256,7 @@ public abstract class BookmarkOverlayMixin {
         @Override
         public Optional<IUserInputHandler> handleUserInput(
             Screen screen,
+            IGuiProperties guiProperties,
             UserInput input,
             IInternalKeyMappings keyBindings
         ) {

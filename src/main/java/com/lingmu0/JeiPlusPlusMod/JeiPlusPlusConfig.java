@@ -1,6 +1,6 @@
 package com.lingmu0.JeiPlusPlusMod;
 
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.ModConfigSpec;
@@ -100,7 +100,7 @@ public final class JeiPlusPlusConfig {
         return value == null || value.get();
     }
 
-    public static boolean isRecipeTypeDisabled(ResourceLocation recipeType) {
+    public static boolean isRecipeTypeDisabled(Identifier recipeType) {
         if (recipeType == null) {
             return false;
         }

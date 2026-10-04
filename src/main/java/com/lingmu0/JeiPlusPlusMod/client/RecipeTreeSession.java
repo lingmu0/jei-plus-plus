@@ -7,7 +7,7 @@ import mezz.jei.api.gui.IRecipeLayoutDrawable;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 
 import java.io.Reader;
@@ -438,11 +438,11 @@ public final class RecipeTreeSession {
         if (outputKey.startsWith("fluid:")) {
             return FluidRecipeCompat.representativeForKey(outputKey, 1000).orElse(ItemStack.EMPTY);
         }
-        ResourceLocation id = ResourceLocation.tryParse(itemId.isEmpty() ? outputKey : itemId);
+        Identifier id = Identifier.tryParse(itemId.isEmpty() ? outputKey : itemId);
         if (id == null) {
             return ItemStack.EMPTY;
         }
-        ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(id));
+        ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.getValue(id));
         return stack.isEmpty() ? ItemStack.EMPTY : stack;
     }
 

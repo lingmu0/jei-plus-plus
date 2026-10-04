@@ -5,10 +5,9 @@ import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.NetworkRegistry;
 
@@ -17,11 +16,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 
 /** Optional play payload: old client-only features do not depend on this channel. */
 public final class Ae2PatternNetwork {
-    private static final ResourceLocation CHANNEL = ResourceLocation.fromNamespaceAndPath(JeiPlusPlus.MODID, "ae2_patterns");
+    private static final Identifier CHANNEL = Identifier.fromNamespaceAndPath(JeiPlusPlus.MODID, "ae2_patterns");
     private static final Map<UUID, Pending> PENDING = new HashMap<>();
     private static final int CHUNK_SIZE = 8;
 
@@ -36,15 +34,6 @@ public final class Ae2PatternNetwork {
 
     public static boolean available(Connection connection) {
         return connection != null && NetworkRegistry.hasChannel(connection, ConnectionProtocol.PLAY, CHANNEL);
-    }
-
-    public static void send(List<Ae2PatternPlan> plans, boolean force, int menuId) {
-        int batch = ThreadLocalRandom.current().nextInt();
-        int count = (plans.size() + CHUNK_SIZE - 1) / CHUNK_SIZE;
-        for (int i = 0; i < count; i++) {
-            PacketDistributor.sendToServer(new Request(menuId, batch, i, count, force,
-                    List.copyOf(plans.subList(i * CHUNK_SIZE, Math.min(plans.size(), (i + 1) * CHUNK_SIZE)))));
-        }
     }
 
     private static void receive(ServerPlayer player, Request request) {
@@ -102,7 +91,7 @@ public final class Ae2PatternNetwork {
             buffer.writeVarInt(plans.size());
             for (Ae2PatternPlan plan : plans) {
                 buffer.writeBoolean(plan.recipeId() != null);
-                if (plan.recipeId() != null) buffer.writeResourceLocation(plan.recipeId());
+                if (plan.recipeId() != null) buffer.writeIdentifier(plan.recipeId());
                 buffer.writeVarInt(plan.inputs().size());
                 for (ItemStack stack : plan.inputs()) ItemStack.OPTIONAL_STREAM_CODEC.encode(buffer, stack);
                 buffer.writeVarInt(plan.outputs().size());
@@ -121,7 +110,7 @@ public final class Ae2PatternNetwork {
             if (size < 0 || size > CHUNK_SIZE) throw new IllegalArgumentException("Invalid pattern chunk");
             List<Ae2PatternPlan> plans = new ArrayList<>(size);
             for (int i = 0; i < size; i++) {
-                ResourceLocation recipeId = buffer.readBoolean() ? buffer.readResourceLocation() : null;
+                Identifier recipeId = buffer.readBoolean() ? buffer.readIdentifier() : null;
                 int inputCount = buffer.readVarInt();
                 if (inputCount < 0 || inputCount > 9) throw new IllegalArgumentException("Invalid pattern inputs");
                 List<ItemStack> inputs = new ArrayList<>(inputCount);

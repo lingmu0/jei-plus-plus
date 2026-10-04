@@ -92,7 +92,9 @@ public final class JeiPlusPlusMixinConfigPlugin implements IMixinConfigPlugin {
 
     private static String findJeiVersion() {
         try {
-            ModFileInfo jei = FMLLoader.getLoadingModList().getModFileById(JEI_MOD_ID);
+            FMLLoader loader = FMLLoader.getCurrentOrNull();
+            if (loader == null || loader.getLoadingModList() == null) return null;
+            ModFileInfo jei = loader.getLoadingModList().getModFileById(JEI_MOD_ID);
             return jei == null ? null : jei.versionString();
         } catch (Throwable ignored) {
             return null;

@@ -5,42 +5,55 @@ import com.lingmu0.JeiPlusPlusMod.Ae2PatternPlan;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
+import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 
 /** Client-only recipe-tree export for AE2's encode button modifier actions. */
 public final class Ae2PatternClient {
+    private static final int CHUNK_SIZE = 8;
     private Ae2PatternClient() {}
 
     public static boolean onEncode() {
-        if (!Screen.hasShiftDown() && !Screen.hasControlDown()) return false;
+        if (!Minecraft.getInstance().hasShiftDown() && !Minecraft.getInstance().hasControlDown()) return false;
         var minecraft = Minecraft.getInstance();
         if (minecraft.player == null || minecraft.player.containerMenu == null) return false;
         if (!Ae2PatternNetwork.available(minecraft.getConnection() == null
                 ? null : minecraft.getConnection().getConnection())) {
-            minecraft.player.displayClientMessage(Component.translatable("jei_plus_plus.ae2.server_required"), true);
+            minecraft.player.sendOverlayMessage(Component.translatable("jei_plus_plus.ae2.server_required"));
             return true;
         }
         RecipeTreeData.Tree tree = RecipeTreeSession.tree();
         if (tree == null || tree.root() == null) {
-            minecraft.player.displayClientMessage(Component.translatable("jei_plus_plus.ae2.no_tree"), true);
+            minecraft.player.sendOverlayMessage(Component.translatable("jei_plus_plus.ae2.no_tree"));
             return true;
         }
         List<Ae2PatternPlan> plans = new ArrayList<>();
         Set<String> seen = new HashSet<>();
         collect(tree.root(), plans, seen);
         if (plans.isEmpty()) {
-            minecraft.player.displayClientMessage(Component.translatable("jei_plus_plus.ae2.no_patterns"), true);
+            minecraft.player.sendOverlayMessage(Component.translatable("jei_plus_plus.ae2.no_patterns"));
             return true;
         }
-        Ae2PatternNetwork.send(plans, Screen.hasControlDown(), minecraft.player.containerMenu.containerId);
+        send(plans, minecraft.hasControlDown(), minecraft.player.containerMenu.containerId);
         return true;
+    }
+
+    private static void send(List<Ae2PatternPlan> plans, boolean force, int menuId) {
+        int batch = ThreadLocalRandom.current().nextInt();
+        int count = (plans.size() + CHUNK_SIZE - 1) / CHUNK_SIZE;
+        for (int i = 0; i < count; i++) {
+            ClientPacketDistributor.sendToServer(new Ae2PatternNetwork.Request(
+                menuId, batch, i, count, force,
+                List.copyOf(plans.subList(i * CHUNK_SIZE, Math.min(plans.size(), (i + 1) * CHUNK_SIZE)))));
+        }
     }
 
     private static void collect(RecipeTreeData.Node node, List<Ae2PatternPlan> plans, Set<String> seen) {
@@ -76,7 +89,7 @@ public final class Ae2PatternClient {
         // JEI can list alternative results in one output slot. Do not encode
         // those variants as simultaneous processing byproducts.
         List<ItemStack> outputs = List.of(node.stack().copy());
-        ResourceLocation id = ResourceLocation.tryParse(recipe.ref().registryId());
+        Identifier id = Identifier.tryParse(recipe.ref().registryId());
         // A stable signature avoids producing duplicate patterns for repeated tree nodes.
         String signature = recipe.ref().key() + Arrays.toString(Arrays.stream(inputs)
                 .map(RecipeTreeData::ingredientKey).toArray()) + substitute;

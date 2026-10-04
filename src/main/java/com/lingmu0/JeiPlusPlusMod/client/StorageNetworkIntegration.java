@@ -1,11 +1,11 @@
 package com.lingmu0.JeiPlusPlusMod.client;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
@@ -461,11 +461,11 @@ final class StorageNetworkIntegration {
             || resultSlot >= container.slots.size()) {
             return false;
         }
-        minecraft.gameMode.handleInventoryMouseClick(
+        minecraft.gameMode.handleContainerInput(
             container.containerId,
             resultSlot,
             0,
-            ClickType.PICKUP,
+            ContainerInput.PICKUP,
             minecraft.player
         );
         return true;
@@ -1348,7 +1348,7 @@ final class StorageNetworkIntegration {
     }
 
     static void renderVirtualStorageHighlights(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         AbstractContainerScreen<?> screen
     ) {
         if (graphics == null || screen == null || !RecipeTreeFavorites.isActive()) {
@@ -1385,7 +1385,7 @@ final class StorageNetworkIntegration {
      * though CyclopsCore renders tooltips with depth testing disabled.
      */
     static void renderIntegratedTerminalHighlightsBeforeTooltip(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         AbstractContainerScreen<?> screen
     ) {
         if (graphics == null || screen == null || !RecipeTreeFavorites.isActive()) {
@@ -1401,7 +1401,7 @@ final class StorageNetworkIntegration {
         }
     }
 
-    private static void renderRs1Highlights(GuiGraphics graphics, AbstractContainerScreen<?> screen)
+    private static void renderRs1Highlights(GuiGraphicsExtractor graphics, AbstractContainerScreen<?> screen)
         throws ReflectiveOperationException {
         Object view = invokeNoArg(screen, "getView");
         Object entries = invokeNoArg(view, "getStacks");
@@ -1429,7 +1429,7 @@ final class StorageNetworkIntegration {
      * pinned-row state on the screen.  Read those values reflectively so the
      * highlight follows the resource even when RS changes its screen class.
      */
-    private static void renderRs2Highlights(GuiGraphics graphics, AbstractContainerScreen<?> screen)
+    private static void renderRs2Highlights(GuiGraphicsExtractor graphics, AbstractContainerScreen<?> screen)
         throws ReflectiveOperationException {
         Object repository = invokeNoArg(screen.getMenu(), "getRepository");
         Object entries = invokeNoArg(repository, "getViewList");
@@ -1464,7 +1464,7 @@ final class StorageNetworkIntegration {
         }
     }
 
-    private static void renderAe2Highlights(GuiGraphics graphics, AbstractContainerScreen<?> screen)
+    private static void renderAe2Highlights(GuiGraphicsExtractor graphics, AbstractContainerScreen<?> screen)
         throws ReflectiveOperationException {
         for (Slot slot : screen.getMenu().slots) {
             if (!slot.getClass().getName().endsWith("RepoSlot")) {
@@ -1482,7 +1482,7 @@ final class StorageNetworkIntegration {
         }
     }
 
-    private static void renderBeyondHighlights(GuiGraphics graphics, AbstractContainerScreen<?> screen)
+    private static void renderBeyondHighlights(GuiGraphicsExtractor graphics, AbstractContainerScreen<?> screen)
         throws ReflectiveOperationException {
         for (Slot slot : screen.getMenu().slots) {
             String name = slot.getClass().getName();
@@ -1508,7 +1508,7 @@ final class StorageNetworkIntegration {
 
     /** Draws recipe-tree overlays on Better Beyond Dimensions' virtual sidebar slots. */
     static void renderBetterBeyondHighlights(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         AbstractContainerScreen<?> screen
     ) {
         if (graphics == null || screen == null || !RecipeTreeFavorites.isActive()
@@ -1535,7 +1535,7 @@ final class StorageNetworkIntegration {
         }
     }
 
-    private static void renderIntegratedHighlights(GuiGraphics graphics, AbstractContainerScreen<?> screen)
+    private static void renderIntegratedHighlights(GuiGraphicsExtractor graphics, AbstractContainerScreen<?> screen)
         throws ReflectiveOperationException {
         Object menu = screen.getMenu();
         Object tab = integratedItemClientTab(menu);
@@ -1612,11 +1612,11 @@ final class StorageNetworkIntegration {
         }
     }
 
-    private static void drawHighlight(GuiGraphics graphics, int x, int y, ItemStack stack) {
+    private static void drawHighlight(GuiGraphicsExtractor graphics, int x, int y, ItemStack stack) {
         drawHighlight(graphics, x, y, stack, 300);
     }
 
-    private static void drawHighlight(GuiGraphics graphics, int x, int y, ItemStack stack, int z) {
+    private static void drawHighlight(GuiGraphicsExtractor graphics, int x, int y, ItemStack stack, int z) {
         if (stack != null && !stack.isEmpty()) {
             String key = RecipeTreeData.ingredientKey(stack);
             boolean direct = RecipeTreeFavorites.isFinalProductKey(key)
@@ -1631,11 +1631,11 @@ final class StorageNetworkIntegration {
         }
     }
 
-    private static void drawHighlightKey(GuiGraphics graphics, int x, int y, String key) {
+    private static void drawHighlightKey(GuiGraphicsExtractor graphics, int x, int y, String key) {
         drawHighlightKey(graphics, x, y, key, 300);
     }
 
-    private static void drawHighlightKey(GuiGraphics graphics, int x, int y, String key, int z) {
+    private static void drawHighlightKey(GuiGraphicsExtractor graphics, int x, int y, String key, int z) {
         boolean finalProduct = RecipeTreeFavorites.isFinalProductKey(key);
         boolean intermediate = RecipeTreeFavorites.isIntermediateKey(key);
         boolean required = RecipeTreeFavorites.isRequiredKey(key);
@@ -1644,14 +1644,14 @@ final class StorageNetworkIntegration {
         }
         int fill = finalProduct ? 0x4433CC66 : (intermediate ? 0x44FF2222 : 0x3300BBFF);
         int border = finalProduct ? 0xDD66FF88 : (intermediate ? 0xDDFF5555 : 0xCC55DDFF);
-        graphics.pose().pushPose();
-        graphics.pose().translate(0, 0, z);
+        graphics.pose().pushMatrix();
+        graphics.nextStratum();
         graphics.fill(x, y, x + 16, y + 16, fill);
         graphics.fill(x, y, x + 16, y + 1, border);
         graphics.fill(x, y + 15, x + 16, y + 16, border);
         graphics.fill(x, y, x + 1, y + 16, border);
         graphics.fill(x + 15, y, x + 16, y + 16, border);
-        graphics.pose().popPose();
+        graphics.pose().popMatrix();
     }
 
     private static boolean isHighlightedGridStack(Object entry, Set<String> keys) {

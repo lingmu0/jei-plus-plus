@@ -2,10 +2,11 @@ package com.lingmu0.JeiPlusPlusMod.client;
 
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
 import mezz.jei.common.input.IInternalKeyMappings;
+import mezz.jei.api.gui.handlers.IGuiProperties;
 import mezz.jei.common.util.ImmutableRect2i;
-import mezz.jei.gui.input.IUserInputHandler;
-import mezz.jei.gui.input.UserInput;
-import net.minecraft.client.gui.GuiGraphics;
+import mezz.jei.common.input.IUserInputHandler;
+import mezz.jei.common.input.UserInput;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 
 import java.lang.reflect.Field;
@@ -44,14 +45,14 @@ public final class CreativeTabGridCompat {
         return availableArea.cropTop(CreativeTabBar.getReservedHeight());
     }
 
-    public static void draw(Object owner, GuiGraphics graphics, int mouseX, int mouseY) {
+    public static void draw(Object owner, GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         IngredientListFeatureSource source = getFeatureSource(owner);
         if (source != null && JeiPlusPlusConfig.CREATIVE_TAB_BAR_ENABLED.get()) {
             CreativeTabBar.draw(source, graphics, getArea(owner), mouseX, mouseY);
         }
     }
 
-    public static void drawTooltip(Object owner, GuiGraphics graphics, int mouseX, int mouseY) {
+    public static void drawTooltip(Object owner, GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         IngredientListFeatureSource source = getFeatureSource(owner);
         if (source != null && JeiPlusPlusConfig.CREATIVE_TAB_BAR_ENABLED.get()) {
             CreativeTabBar.drawTooltip(source, graphics, getArea(owner), mouseX, mouseY);
@@ -115,6 +116,7 @@ public final class CreativeTabGridCompat {
         @Override
         public Optional<IUserInputHandler> handleUserInput(
             Screen screen,
+            IGuiProperties guiProperties,
             UserInput input,
             IInternalKeyMappings keyBindings
         ) {
@@ -122,7 +124,7 @@ public final class CreativeTabGridCompat {
             if (source != null && CreativeTabBar.handleClick(source, getArea(owner), input)) {
                 return Optional.of(this);
             }
-            return delegate.handleUserInput(screen, input, keyBindings);
+            return delegate.handleUserInput(screen, guiProperties, input, keyBindings);
         }
 
         @Override

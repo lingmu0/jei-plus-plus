@@ -81,7 +81,7 @@ JEI++ 通过可选的客户端反射集成读取以下网络中的物品和流�
 - 配方候选、按配方键缓存的配方快照、配方状态、布局、背包/网络库存快照和流体访问器使用缓存，并按游戏刻和修订号进行刷新，避免每帧重复扫描。
 - 当前打开的容器物品会计入配方树库存，并按配方树状态高亮；分类选择弹窗打开时会屏蔽底层 JEI、背包和容器物品的 tooltip。
 - 递归候选搜索具备深度、访问数量和循环保护；递归只用于配方树和默认配方相关流程。
-- 兼容多个 JEI 配方布局、书签、物品列表和渲染路径，并分别提供 Minecraft 1.20.1 Forge 与 1.21.1 NeoForge 实现。
+- 兼容多个 JEI 配方布局、书签、物品列表和渲染路径，分别提供 Minecraft 1.20.1 Forge、1.21.1 NeoForge 与 26.1.2 NeoForge 分支。
 - JEI 重载、存档切换、终端切换、可选模组缺失或 API 变化时会安全清理和恢复运行时缓存。
 
 ## 配置
@@ -145,12 +145,13 @@ JSON 分组示例：
 
 | 游戏版本 | 加载器 | Java | JEI 开发依赖 | 模组版本 |
 | --- | --- | --- | --- | --- |
-| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.59.0.210 | 1.0.6-1.20.1 |
-| 1.21.1 | NeoForge 21.1.238 | 21 | JEI 19.54.0.429 | 1.0.6-1.21.1 |
+| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.59.0.210 | 1.0.7-1.20.1 |
+| 1.21.1 | NeoForge 21.1.238 | 21 | JEI 19.54.0.429 | 1.0.7-1.21.1 |
+| 26.1.2 | NeoForge 26.1.2.111 | 25 | JEI 29.43.0.106 | 1.0.7-26.1.2 |
 
-1.20.1 的声明兼容范围从 JEI 15.19.5.99 起，1.21.1 的声明兼容范围从 JEI 19.27.0 起；表中 JEI 版本是当前开发依赖。
+1.20.1 的声明兼容范围从 JEI 15.19.5.99 起，1.21.1 的声明兼容范围从 JEI 19.27.0 起，26.1.2 的声明兼容范围从 JEI 29.43.0.106 起；表中 JEI 版本是当前开发依赖。
 
-JEI 是可选的客户端依赖；服务端不需要安装 JEI++。模组本身不提供服务端游戏逻辑，若被加载到服务端也不会启用这些客户端功能。
+JEI 是可选的客户端依赖；一般功能仅需客户端安装 JEI++。AE2 配方树批量制作样板需要服务端也安装 JEI++，未安装时客户端会提示功能不可用。
 
 ## English
 
@@ -226,15 +227,16 @@ Transfers prefer the terminal's client API, official packet path, or the generic
 
 Recipe candidates, per-recipe snapshots, recipe status, layouts, inventory/network snapshots, and fluid accessors are cached and refreshed by game ticks and revisions. Items in the open container count toward recipe-tree inventory and highlighting. Recursive searches have depth, visit, and cycle limits and are used only for tree/default-recipe workflows.
 
-The addon supports multiple JEI layout, bookmark, ingredient-list, and renderer paths on both Minecraft 1.20.1 Forge and 1.21.1 NeoForge. JEI reloads, world changes, terminal changes, missing optional mods, and API changes are handled without retaining stale runtime objects.
+The addon supports multiple JEI layout, bookmark, ingredient-list, and renderer paths on Minecraft 1.20.1 Forge, 1.21.1 NeoForge, and 26.1.2 NeoForge branches. JEI reloads, world changes, terminal changes, missing optional mods, and API changes are handled without retaining stale runtime objects.
 
 ### Versions and dependencies
 
 | Minecraft | Loader | Java | JEI development dependency | Mod version |
 | --- | --- | --- | --- | --- |
-| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.59.0.210 | 1.0.6-1.20.1 |
-| 1.21.1 | NeoForge 21.1.238 | 21 | JEI 19.54.0.429 | 1.0.6-1.21.1 |
+| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.59.0.210 | 1.0.7-1.20.1 |
+| 1.21.1 | NeoForge 21.1.238 | 21 | JEI 19.54.0.429 | 1.0.7-1.21.1 |
+| 26.1.2 | NeoForge 26.1.2.111 | 25 | JEI 29.43.0.106 | 1.0.7-26.1.2 |
 
-The declared compatibility floor is JEI 15.19.5.99 for 1.20.1 and JEI 19.27.0 for 1.21.1; the table lists the current JEI development dependencies.
+The declared compatibility floor is JEI 15.19.5.99 for 1.20.1, JEI 19.27.0 for 1.21.1, and JEI 29.43.0.106 for 26.1.2; the table lists the current JEI development dependencies.
 
-JEI++ is client-only and JEI is an optional client dependency. The server does not need to install JEI++.
+JEI is an optional client dependency, and most JEI++ features work with only a client installation. AE2 recipe-tree bulk pattern creation also requires JEI++ on the server; without it, the client reports that this feature is unavailable.

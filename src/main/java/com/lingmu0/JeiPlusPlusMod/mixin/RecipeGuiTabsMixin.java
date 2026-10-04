@@ -2,7 +2,7 @@ package com.lingmu0.JeiPlusPlusMod.mixin;
 
 import mezz.jei.common.util.ImmutableRect2i;
 import mezz.jei.gui.PageNavigation;
-import mezz.jei.gui.input.IUserInputHandler;
+import mezz.jei.common.input.IUserInputHandler;
 import mezz.jei.gui.recipes.IRecipeGuiLogic;
 import mezz.jei.gui.recipes.RecipeGuiTabs;
 import org.spongepowered.asm.mixin.Final;
@@ -13,7 +13,8 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import mezz.jei.common.input.IInternalKeyMappings;
-import mezz.jei.gui.input.UserInput;
+import mezz.jei.api.gui.handlers.IGuiProperties;
+import mezz.jei.common.input.UserInput;
 import net.minecraft.client.gui.screens.Screen;
 
 import java.util.Optional;
@@ -42,8 +43,8 @@ public abstract class RecipeGuiTabsMixin {
         }
 
         @Override
-        public Optional<IUserInputHandler> handleUserInput(Screen screen, UserInput input, IInternalKeyMappings keyBindings) {
-            return delegate.handleUserInput(screen, input, keyBindings);
+        public Optional<IUserInputHandler> handleUserInput(Screen screen, IGuiProperties guiProperties, UserInput input, IInternalKeyMappings keyBindings) {
+            return delegate.handleUserInput(screen, guiProperties, input, keyBindings);
         }
 
         @Override

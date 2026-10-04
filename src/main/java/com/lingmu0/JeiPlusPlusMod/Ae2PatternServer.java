@@ -1,7 +1,9 @@
 package com.lingmu0.JeiPlusPlusMod;
 
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -80,7 +82,7 @@ public final class Ae2PatternServer {
             }
             ((AbstractContainerMenu) menu).broadcastChanges();
             player.getInventory().setChanged();
-            player.displayClientMessage(Component.translatable("jei_plus_plus.ae2.result", created, existing, invalid), true);
+            player.sendOverlayMessage(Component.translatable("jei_plus_plus.ae2.result", created, existing, invalid));
         } catch (ReflectiveOperationException | RuntimeException error) {
             LOGGER.error("Failed to create AE2 recipe-tree patterns", error);
             tell(player, "jei_plus_plus.ae2.failed");
@@ -144,10 +146,10 @@ public final class Ae2PatternServer {
         return null;
     }
 
-    private static Object recipe(ServerPlayer player, ResourceLocation id) throws ReflectiveOperationException {
+    private static Object recipe(ServerPlayer player, Identifier id) throws ReflectiveOperationException {
         if (id == null) return null;
-        Object found = call(player.serverLevel().getRecipeManager(), "byKey", id);
-        return found instanceof Optional<?> optional ? optional.orElse(null) : found;
+        return player.level().getServer().getRecipeManager()
+            .byKey(ResourceKey.create(Registries.RECIPE, id)).orElse(null);
     }
 
     private static Object itemKey(ItemStack stack) throws ReflectiveOperationException {
@@ -170,6 +172,6 @@ public final class Ae2PatternServer {
     }
 
     private static void tell(ServerPlayer player, String key) {
-        player.displayClientMessage(Component.translatable(key), true);
+        player.sendOverlayMessage(Component.translatable(key));
     }
 }

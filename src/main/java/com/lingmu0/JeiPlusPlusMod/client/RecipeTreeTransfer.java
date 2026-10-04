@@ -14,13 +14,13 @@ import mezz.jei.api.recipe.transfer.IRecipeTransferManager;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.common.Internal;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.CartographyTableMenu;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.GrindstoneMenu;
 import net.minecraft.world.inventory.InventoryMenu;
@@ -229,11 +229,11 @@ public final class RecipeTreeTransfer {
             waitFrames = 2;
             return;
         }
-        minecraft.gameMode.handleInventoryMouseClick(
+        minecraft.gameMode.handleContainerInput(
             pendingMenuId,
             pendingResultSlot,
             0,
-            ClickType.QUICK_MOVE,
+            ContainerInput.QUICK_MOVE,
             minecraft.player
         );
         pendingVanillaPickup = true;
@@ -262,11 +262,11 @@ public final class RecipeTreeTransfer {
             clearPending();
             return;
         }
-        minecraft.gameMode.handleInventoryMouseClick(
+        minecraft.gameMode.handleContainerInput(
             pendingMenuId,
             pendingResultSlot,
             0,
-            ClickType.QUICK_MOVE,
+            ContainerInput.QUICK_MOVE,
             minecraft.player
         );
         waitFrames = 1;
@@ -353,11 +353,11 @@ public final class RecipeTreeTransfer {
             pendingAe2PlacementInventoryBefore = pendingAe2OutputKey.isEmpty()
                 ? 0
                 : playerInventoryAmount(menu, minecraft.player, pendingAe2OutputKey);
-            minecraft.gameMode.handleInventoryMouseClick(
+            minecraft.gameMode.handleContainerInput(
                 pendingMenuId,
                 target,
                 0,
-                ClickType.PICKUP,
+                ContainerInput.PICKUP,
                 minecraft.player
             );
             waitFrames = 1;
@@ -1294,7 +1294,7 @@ public final class RecipeTreeTransfer {
         }
 
         @Override
-        public void drawHighlight(GuiGraphics guiGraphics, int color) {
+        public void drawHighlight(GuiGraphicsExtractor guiGraphics, int color) {
             delegate.drawHighlight(guiGraphics, color);
         }
 

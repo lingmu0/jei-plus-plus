@@ -9,9 +9,9 @@ import mezz.jei.api.recipe.IFocus;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Player;
@@ -21,8 +21,9 @@ import net.minecraft.world.level.material.Fluid;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.FluidType;
-import net.neoforged.neoforge.fluids.capability.IFluidHandler;
-import net.neoforged.neoforge.fluids.capability.IFluidHandlerItem;
+import net.neoforged.neoforge.transfer.ResourceHandler;
+import net.neoforged.neoforge.transfer.access.ItemAccess;
+import net.neoforged.neoforge.transfer.fluid.FluidResource;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -169,16 +170,12 @@ final class FluidRecipeCompat {
             return List.of();
         }
         int requiredAmount = safeAmount(required.getAmount(), batches);
-        for (ItemStack inventoryStack : player.getInventory().items) {
+        for (ItemStack inventoryStack : player.getInventory().getNonEquipmentItems()) {
             if (inventoryStack.isEmpty()) {
                 continue;
             }
-            IFluidHandlerItem handler = inventoryStack.getCapability(Capabilities.FluidHandler.ITEM);
-            if (handler == null) {
-                continue;
-            }
-            FluidStack contained = handler.drain(Integer.MAX_VALUE, IFluidHandler.FluidAction.SIMULATE);
-            if (contained == null || contained.isEmpty()
+            FluidStack contained = fluidFromItem(inventoryStack).orElse(FluidStack.EMPTY);
+            if (contained.isEmpty()
                 || !FluidStack.isSameFluidSameComponents(contained, required)) {
                 continue;
             }
@@ -242,20 +239,29 @@ final class FluidRecipeCompat {
         if (fluid != null) {
             return Optional.of(fluid.copy());
         }
-        // Forge fluid handlers are commonly implemented for a single item.
-        // Passing a stack with count > 1 can make the capability return an
-        // empty handler even though every item carries the same fluid. Probe a
-        // one-item copy for identity/highlight checks; callers that need the
-        // total amount multiply the returned amount by the original count.
+        return fluidFromItem(stack);
+    }
+
+    private static Optional<FluidStack> fluidFromItem(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return Optional.empty();
+        }
+        // Item capabilities use an ItemAccess context in NeoForge 26.1.
+        // Probe one item so the reported amount is per container.
         ItemStack probe = stack;
         if (stack.getCount() > 1) {
             probe = stack.copy();
             probe.setCount(1);
         }
-        if (probe.getCapability(Capabilities.FluidHandler.ITEM) instanceof IFluidHandlerItem handler) {
-            FluidStack contained = handler.drain(Integer.MAX_VALUE, IFluidHandler.FluidAction.SIMULATE);
-            if (contained != null && !contained.isEmpty()) {
-                return Optional.of(contained.copy());
+        ResourceHandler<FluidResource> handler = ItemAccess.forStack(probe)
+            .getCapability(Capabilities.Fluid.ITEM);
+        if (handler != null) {
+            for (int tank = 0; tank < handler.size(); tank++) {
+                FluidResource resource = handler.getResource(tank);
+                int amount = handler.getAmountAsInt(tank);
+                if (!resource.isEmpty() && amount > 0) {
+                    return Optional.of(resource.toStack(amount));
+                }
             }
         }
         return Optional.empty();
@@ -338,11 +344,11 @@ final class FluidRecipeCompat {
         if (key == null || !key.startsWith("fluid:") || amount <= 0) {
             return Optional.empty();
         }
-        ResourceLocation id = ResourceLocation.tryParse(key.substring("fluid:".length()));
+        Identifier id = Identifier.tryParse(key.substring("fluid:".length()));
         if (id == null) {
             return Optional.empty();
         }
-        Fluid fluid = BuiltInRegistries.FLUID.get(id);
+        Fluid fluid = BuiltInRegistries.FLUID.getValue(id);
         if (fluid == null || fluid == net.minecraft.world.level.material.Fluids.EMPTY) {
             return Optional.empty();
         }
@@ -426,7 +432,7 @@ final class FluidRecipeCompat {
     }
 
     /** Draws a registered FluidStack and returns whether the stack was fluid-backed. */
-    static boolean render(GuiGraphics graphics, ItemStack stack, int x, int y) {
+    static boolean render(GuiGraphicsExtractor graphics, ItemStack stack, int x, int y) {
         Optional<FluidStack> value = treeFluid(stack);
         if (value.isEmpty()) {
             return false;
@@ -443,7 +449,7 @@ final class FluidRecipeCompat {
     }
 
     /** Draws the JEI fluid tooltip for a tree node or candidate choice. */
-    static boolean renderTooltip(GuiGraphics graphics, ItemStack stack, int mouseX, int mouseY) {
+    static boolean renderTooltip(GuiGraphicsExtractor graphics, ItemStack stack, int mouseX, int mouseY) {
         Optional<FluidStack> value = treeFluid(stack);
         if (value.isEmpty()) {
             return false;
@@ -456,7 +462,7 @@ final class FluidRecipeCompat {
         }
         IIngredientRenderer<FluidStack> renderer = manager.getIngredientRenderer(NeoForgeTypes.FLUID_STACK);
         List<Component> tooltip = renderer.getTooltip(value.get(), TooltipFlag.Default.NORMAL);
-        graphics.renderTooltip(Minecraft.getInstance().font, tooltip, Optional.empty(), mouseX, mouseY);
+        graphics.setTooltipForNextFrame(Minecraft.getInstance().font, tooltip, Optional.empty(), mouseX, mouseY);
         return true;
     }
 

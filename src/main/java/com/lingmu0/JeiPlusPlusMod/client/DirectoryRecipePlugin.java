@@ -7,7 +7,7 @@ import mezz.jei.api.registration.IRecipeCategoryRegistration;
 import mezz.jei.api.registration.IRecipeRegistration;
 import mezz.jei.api.registration.IAdvancedRegistration;
 import mezz.jei.api.runtime.IJeiRuntime;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlus;
 
 /** Registers the directory category with JEI when the optional dependency is present. */
@@ -17,8 +17,8 @@ public final class DirectoryRecipePlugin implements IModPlugin {
     private static volatile IJeiRuntime jeiRuntime;
 
     @Override
-    public ResourceLocation getPluginUid() {
-        return ResourceLocation.fromNamespaceAndPath(JeiPlusPlus.MODID, "jei_plugin");
+    public Identifier getPluginUid() {
+        return Identifier.fromNamespaceAndPath(JeiPlusPlus.MODID, "jei_plugin");
     }
 
     @Override

@@ -2,11 +2,11 @@ package com.lingmu0.JeiPlusPlusMod.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import mezz.jei.common.util.ImmutableRect2i;
-import mezz.jei.gui.input.IUserInputHandler;
-import mezz.jei.gui.input.UserInput;
+import mezz.jei.common.input.IUserInputHandler;
+import mezz.jei.common.input.UserInput;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.ItemStack;
@@ -45,7 +45,7 @@ public final class CreativeTabBar {
 
     public static void draw(
         IngredientListFeatureSource source,
-        GuiGraphics guiGraphics,
+        GuiGraphicsExtractor guiGraphics,
         ImmutableRect2i area,
         int mouseX,
         int mouseY
@@ -65,7 +65,6 @@ public final class CreativeTabBar {
         int start = page * capacity;
 
         guiGraphics.fill(
-            RenderType.guiOverlay(),
             area.getX(),
             area.getY(),
             area.getX() + area.getWidth(),
@@ -78,7 +77,6 @@ public final class CreativeTabBar {
             int x = getTabX(area, slot, capacity);
             if (tabIndex == selected) {
                 guiGraphics.fill(
-                    RenderType.guiOverlay(),
                     x,
                     area.getY(),
                     x + SLOT_SIZE,
@@ -88,7 +86,7 @@ public final class CreativeTabBar {
             }
             ItemStack icon = getIcon(tabs, tabIndex);
             if (!icon.isEmpty()) {
-                guiGraphics.renderItem(icon, x + 1, area.getY() + 1);
+                guiGraphics.item(icon, x + 1, area.getY() + 1);
             }
         }
 
@@ -96,8 +94,8 @@ public final class CreativeTabBar {
         // stacks with depth enabled, so the controls and page label need a
         // high overlay layer to remain visible above them.
         var pose = guiGraphics.pose();
-        pose.pushPose();
-        pose.translate(0.0D, 0.0D, 300.0D);
+        pose.pushMatrix();
+        guiGraphics.nextStratum();
         drawPageButton(guiGraphics, area.getX(), area.getY(), true, pageCount > 1,
             isInside(area, area.getX(), mouseX, mouseY));
         drawPageButton(guiGraphics, area.getX() + area.getWidth() - SLOT_SIZE, area.getY(), false,
@@ -107,7 +105,7 @@ public final class CreativeTabBar {
         String pageLabel = (page + 1) + "/" + pageCount;
         if (com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig.CREATIVE_TAB_PAGE_NUMBER_ENABLED.get()) {
             int labelX = area.getX() + (area.getWidth() - Minecraft.getInstance().font.width(pageLabel)) / 2;
-            guiGraphics.drawString(
+            guiGraphics.text(
                 Minecraft.getInstance().font,
                 pageLabel,
                 labelX,
@@ -116,7 +114,7 @@ public final class CreativeTabBar {
                 true
             );
         }
-        pose.popPose();
+        pose.popMatrix();
         if (source.jeiPlusPlus$isCreativeTabSelectorOpen()) {
             CreativeTabSelector.draw(source, guiGraphics, mouseX, mouseY);
         }
@@ -124,7 +122,7 @@ public final class CreativeTabBar {
 
     public static void drawTooltip(
         IngredientListFeatureSource source,
-        GuiGraphics guiGraphics,
+        GuiGraphicsExtractor guiGraphics,
         ImmutableRect2i area,
         int mouseX,
         int mouseY
@@ -139,7 +137,7 @@ public final class CreativeTabBar {
         int pageCount = getPageCount(source.jeiPlusPlus$getCreativeTabs().size() + 1, getCapacity(area));
         int page = clampPage(source.jeiPlusPlus$getCreativeTabPage(), pageCount);
         if (isPageButton(area, mouseX, mouseY, true) && pageCount > 1) {
-            guiGraphics.renderTooltip(
+            guiGraphics.setTooltipForNextFrame(
                 Minecraft.getInstance().font,
                 Component.translatable("jei_plus_plus.creative_tab.previous_page"),
                 mouseX,
@@ -148,7 +146,7 @@ public final class CreativeTabBar {
             return;
         }
         if (isPageButton(area, mouseX, mouseY, false) && pageCount > 1) {
-            guiGraphics.renderTooltip(
+            guiGraphics.setTooltipForNextFrame(
                 Minecraft.getInstance().font,
                 Component.translatable("jei_plus_plus.creative_tab.next_page"),
                 mouseX,
@@ -161,7 +159,7 @@ public final class CreativeTabBar {
             return;
         }
         Component title = getTitle(source.jeiPlusPlus$getCreativeTabs(), tabIndex);
-        guiGraphics.renderTooltip(Minecraft.getInstance().font, title, mouseX, mouseY);
+        guiGraphics.setTooltipForNextFrame(Minecraft.getInstance().font, title, mouseX, mouseY);
     }
 
     public static boolean handleClick(
@@ -295,7 +293,7 @@ public final class CreativeTabBar {
     }
 
     private static void drawPageButton(
-        GuiGraphics guiGraphics,
+        GuiGraphicsExtractor guiGraphics,
         int x,
         int y,
         boolean left,
@@ -305,22 +303,22 @@ public final class CreativeTabBar {
         int background = hovered && enabled ? 0xFF777777 : enabled ? 0xFF555555 : 0xFF303030;
         int border = enabled ? 0xFFB0B0B0 : 0xFF555555;
         int arrow = enabled ? 0xFFFFFFFF : 0xFF707070;
-        guiGraphics.fill(RenderType.guiOverlay(), x, y, x + SLOT_SIZE, y + HEIGHT, background);
-        guiGraphics.fill(RenderType.guiOverlay(), x, y, x + SLOT_SIZE, y + 1, border);
-        guiGraphics.fill(RenderType.guiOverlay(), x, y + HEIGHT - 1, x + SLOT_SIZE, y + HEIGHT, border);
-        guiGraphics.fill(RenderType.guiOverlay(), x, y, x + 1, y + HEIGHT, border);
-        guiGraphics.fill(RenderType.guiOverlay(), x + SLOT_SIZE - 1, y, x + SLOT_SIZE, y + HEIGHT, border);
+        guiGraphics.fill( x, y, x + SLOT_SIZE, y + HEIGHT, background);
+        guiGraphics.fill( x, y, x + SLOT_SIZE, y + 1, border);
+        guiGraphics.fill( x, y + HEIGHT - 1, x + SLOT_SIZE, y + HEIGHT, border);
+        guiGraphics.fill( x, y, x + 1, y + HEIGHT, border);
+        guiGraphics.fill( x + SLOT_SIZE - 1, y, x + SLOT_SIZE, y + HEIGHT, border);
         if (left) {
             // Point and shaft share the slot's centre (9, 9).
-            guiGraphics.fill(RenderType.guiOverlay(), x + 5, y + 8, x + 8, y + 10, arrow);
-            guiGraphics.fill(RenderType.guiOverlay(), x + 6, y + 7, x + 8, y + 11, arrow);
-            guiGraphics.fill(RenderType.guiOverlay(), x + 7, y + 6, x + 9, y + 12, arrow);
-            guiGraphics.fill(RenderType.guiOverlay(), x + 8, y + 8, x + 13, y + 10, arrow);
+            guiGraphics.fill( x + 5, y + 8, x + 8, y + 10, arrow);
+            guiGraphics.fill( x + 6, y + 7, x + 8, y + 11, arrow);
+            guiGraphics.fill( x + 7, y + 6, x + 9, y + 12, arrow);
+            guiGraphics.fill( x + 8, y + 8, x + 13, y + 10, arrow);
         } else {
-            guiGraphics.fill(RenderType.guiOverlay(), x + 10, y + 8, x + 13, y + 10, arrow);
-            guiGraphics.fill(RenderType.guiOverlay(), x + 10, y + 7, x + 12, y + 11, arrow);
-            guiGraphics.fill(RenderType.guiOverlay(), x + 9, y + 6, x + 11, y + 12, arrow);
-            guiGraphics.fill(RenderType.guiOverlay(), x + 5, y + 8, x + 10, y + 10, arrow);
+            guiGraphics.fill( x + 10, y + 8, x + 13, y + 10, arrow);
+            guiGraphics.fill( x + 10, y + 7, x + 12, y + 11, arrow);
+            guiGraphics.fill( x + 9, y + 6, x + 11, y + 12, arrow);
+            guiGraphics.fill( x + 5, y + 8, x + 10, y + 10, arrow);
         }
     }
 

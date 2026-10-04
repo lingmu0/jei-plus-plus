@@ -20,12 +20,12 @@ import mezz.jei.common.platform.Services;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.BookmarkType;
 import mezz.jei.gui.bookmarks.IBookmark;
-import mezz.jei.gui.input.UserInput;
+import mezz.jei.common.input.UserInput;
 import mezz.jei.gui.overlay.elements.IElement;
 import mezz.jei.gui.util.FocusUtil;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.Slot;
@@ -302,7 +302,7 @@ public final class RecipeTreeFavorites {
 
     /** Draws overlays for terminal entries that are not vanilla menu slots. */
     public static void renderVirtualNetworkHighlights(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         AbstractContainerScreen<?> screen
     ) {
         StorageNetworkIntegration.renderVirtualStorageHighlights(graphics, screen);
@@ -310,7 +310,7 @@ public final class RecipeTreeFavorites {
 
     /** Draws recipe-tree overlays on Better Beyond Dimensions' virtual sidebar slots. */
     public static void renderBetterBeyondHighlights(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         AbstractContainerScreen<?> screen
     ) {
         StorageNetworkIntegration.renderBetterBeyondHighlights(graphics, screen);
@@ -318,7 +318,7 @@ public final class RecipeTreeFavorites {
 
     /** Draws Integrated Terminals overlays before that screen renders its tooltip. */
     public static void renderIntegratedTerminalHighlightsBeforeTooltip(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         AbstractContainerScreen<?> screen
     ) {
         StorageNetworkIntegration.renderIntegratedTerminalHighlightsBeforeTooltip(graphics, screen);
@@ -540,7 +540,7 @@ public final class RecipeTreeFavorites {
         }
         int fallback = 9;
         try {
-            Object config = Internal.getJeiClientConfigs().getBookmarkListConfig();
+            Object config = Internal.getClientConfigs().getBookmarkListConfig();
             Object value;
             try {
                 value = config.getClass().getMethod("getMaxColumns").invoke(config);
@@ -795,7 +795,7 @@ public final class RecipeTreeFavorites {
             // recursive plan is an explicit Ctrl-click action, including for
             // intermediate products whose direct inputs are not in the inventory.
             boolean recursive = JeiPlusPlusConfig.AUTOMATIC_CRAFTING_ENABLED.get()
-                && net.minecraft.client.gui.screens.Screen.hasControlDown();
+                && net.minecraft.client.Minecraft.getInstance().hasControlDown();
             if (input.isSimulate()) {
                 // Let JEI handle the click normally when this recipe cannot
                 // be transferred.  In particular, a plain left click on a
@@ -1005,17 +1005,17 @@ public final class RecipeTreeFavorites {
         }
 
         @Override
-        public void draw(GuiGraphics graphics, int xOffset, int yOffset) {
+        public void draw(GuiGraphicsExtractor graphics, int xOffset, int yOffset) {
             var font = Minecraft.getInstance().font;
             int textWidth = Math.max(1, font.width(value));
             float scale = Math.min(1.0f, 16.0f / textWidth);
-            graphics.pose().pushPose();
-            graphics.pose().translate(0, 0, 300);
+            graphics.pose().pushMatrix();
+            graphics.nextStratum();
             graphics.fill(xOffset, yOffset, xOffset + 2, yOffset + 2, color);
-            graphics.pose().translate(xOffset + 17, yOffset + 9, 0);
-            graphics.pose().scale(scale, scale, 1.0f);
-            graphics.drawString(font, value, -textWidth, 0, color, true);
-            graphics.pose().popPose();
+            graphics.pose().translate(xOffset + 17, yOffset + 9);
+            graphics.pose().scale(scale, scale);
+            graphics.text(font, value, -textWidth, 0, color, true);
+            graphics.pose().popMatrix();
         }
     }
 }

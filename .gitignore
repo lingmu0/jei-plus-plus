@@ -29,3 +29,6 @@ runs/
 
 # Local auxiliary Git worktrees
 .codex-worktree-*/
+
+# Local JDK and build prerequisites for newer Minecraft versions
+.local-tools/

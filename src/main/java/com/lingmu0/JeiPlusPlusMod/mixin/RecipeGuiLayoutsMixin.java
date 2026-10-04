@@ -8,7 +8,7 @@ import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.gui.input.IClickableIngredientInternal;
 import mezz.jei.gui.input.ClickableIngredientInternal;
 import mezz.jei.gui.recipes.RecipeGuiLayouts;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -22,7 +22,7 @@ import java.util.Optional;
 public abstract class RecipeGuiLayoutsMixin {
     @Inject(method = "drawTooltips", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
     private void jeiPlusPlus$hideRecipeTooltipsWhileSelectorOpen(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         org.spongepowered.asm.mixin.injection.callback.CallbackInfo ci

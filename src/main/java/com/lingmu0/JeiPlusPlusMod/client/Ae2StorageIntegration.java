@@ -4,7 +4,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.NonNullList;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
@@ -802,7 +802,7 @@ final class Ae2StorageIntegration {
         for (Constructor<?> constructor : packetType.getConstructors()) {
             Class<?>[] parameters = constructor.getParameterTypes();
             if (parameters.length == 3
-                && parameters[0] == ResourceLocation.class
+                && parameters[0] == Identifier.class
                 && parameters[1].isAssignableFrom(NonNullList.class)
                 && parameters[2] == boolean.class) {
                 return constructor;

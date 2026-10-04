@@ -2,10 +2,10 @@ package com.lingmu0.JeiPlusPlusMod.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import mezz.jei.common.util.ImmutableRect2i;
-import mezz.jei.gui.input.UserInput;
+import mezz.jei.common.input.UserInput;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.ItemStack;
@@ -27,7 +27,7 @@ public final class CreativeTabSelector {
 
     public static void draw(
         IngredientListFeatureSource source,
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY
     ) {
@@ -41,15 +41,15 @@ public final class CreativeTabSelector {
         }
 
         var pose = graphics.pose();
-        pose.pushPose();
+        pose.pushMatrix();
         // Draw the modal above the underlying item sprites, hover outlines, and highlights.
-        pose.translate(0.0D, 0.0D, 500.0D);
-        graphics.fill(RenderType.guiOverlay(), 0, 0, layout.screenWidth(), layout.screenHeight(), 0x90000000);
-        graphics.fill(RenderType.guiOverlay(), layout.x() - 1, layout.y() - 1,
+        graphics.nextStratum();
+        graphics.fill( 0, 0, layout.screenWidth(), layout.screenHeight(), 0x90000000);
+        graphics.fill( layout.x() - 1, layout.y() - 1,
             layout.x() + layout.width() + 1, layout.y() + layout.height() + 1, 0xFFE0E0E0);
-        graphics.fill(RenderType.guiOverlay(), layout.x(), layout.y(),
+        graphics.fill( layout.x(), layout.y(),
             layout.x() + layout.width(), layout.y() + layout.height(), 0xF0101010);
-        graphics.drawCenteredString(
+        graphics.centeredText(
             Minecraft.getInstance().font,
             Component.translatable("jei_plus_plus.creative_tab.selector_title"),
             layout.x() + layout.width() / 2,
@@ -58,7 +58,7 @@ public final class CreativeTabSelector {
         );
 
         int closeX = layout.x() + layout.width() - 16;
-        graphics.drawCenteredString(
+        graphics.centeredText(
             Minecraft.getInstance().font,
             "x",
             closeX + 5,
@@ -79,17 +79,17 @@ public final class CreativeTabSelector {
             boolean selected = index == source.jeiPlusPlus$getSelectedCreativeTab();
             boolean pinned = index > 0 && CreativeTabOrder.isPinned(tabs.get(index - 1));
             int border = selected ? 0xFF55DDAA : pinned ? 0xFFFFCC55 : hovered ? 0xFF8099FF : 0xFF707070;
-            graphics.fill(RenderType.guiOverlay(), cellX, cellY, cellX + cellWidth, cellY + 18, border);
-            graphics.fill(RenderType.guiOverlay(), cellX + 1, cellY + 1,
+            graphics.fill( cellX, cellY, cellX + cellWidth, cellY + 18, border);
+            graphics.fill( cellX + 1, cellY + 1,
                 cellX + cellWidth - 1, cellY + 17, selected ? 0xFF17382D : 0xFF202020);
 
             ItemStack icon = getIcon(tabs, index);
             if (!icon.isEmpty()) {
-                graphics.renderItem(icon, cellX + 2, cellY + 1);
+                graphics.item(icon, cellX + 2, cellY + 1);
             }
             String title = getTitle(tabs, index).getString();
             String clippedTitle = clip(title, Math.max(1, cellWidth - 27));
-            graphics.drawString(
+            graphics.text(
                 Minecraft.getInstance().font,
                 clippedTitle,
                 cellX + 21,
@@ -107,19 +107,19 @@ public final class CreativeTabSelector {
             contains(mouseX, mouseY, layout.x() + 7, footerY, 16, 14));
         drawPageButton(graphics, layout.x() + layout.width() - 23, footerY, ">", pageCount > 1,
             contains(mouseX, mouseY, layout.x() + layout.width() - 23, footerY, 16, 14));
-        graphics.drawCenteredString(
+        graphics.centeredText(
             Minecraft.getInstance().font,
             (page + 1) + "/" + pageCount,
             layout.x() + layout.width() / 2,
             footerY + 3,
             0xFFD0D0D0
         );
-        pose.popPose();
+        pose.popMatrix();
     }
 
     public static void drawTooltip(
         IngredientListFeatureSource source,
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY
     ) {
@@ -127,16 +127,16 @@ public final class CreativeTabSelector {
         int index = getEntryAt(source, layout, mouseX, mouseY);
         if (index >= 0) {
             var pose = graphics.pose();
-            pose.pushPose();
+            pose.pushMatrix();
             // Keep the tooltip above the selector and its item-render layer.
-            pose.translate(0.0D, 0.0D, 700.0D);
-            graphics.renderTooltip(
+            graphics.nextStratum();
+            graphics.setTooltipForNextFrame(
                 Minecraft.getInstance().font,
                 getTitle(source.jeiPlusPlus$getCreativeTabs(), index),
                 mouseX,
                 mouseY
             );
-            pose.popPose();
+            pose.popMatrix();
         }
     }
 
@@ -338,15 +338,15 @@ public final class CreativeTabSelector {
         return end == 0 ? "" : text.substring(0, end) + suffix;
     }
 
-    private static void drawPin(GuiGraphics graphics, int x, int y) {
+    private static void drawPin(GuiGraphicsExtractor graphics, int x, int y) {
         int color = 0xFFFFCC55;
-        graphics.fill(RenderType.guiOverlay(), x + 2, y, x + 6, y + 3, color);
-        graphics.fill(RenderType.guiOverlay(), x + 3, y + 3, x + 5, y + 6, color);
-        graphics.fill(RenderType.guiOverlay(), x, y + 6, x + 8, y + 7, color);
+        graphics.fill( x + 2, y, x + 6, y + 3, color);
+        graphics.fill( x + 3, y + 3, x + 5, y + 6, color);
+        graphics.fill( x, y + 6, x + 8, y + 7, color);
     }
 
     private static void drawPageButton(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int x,
         int y,
         String label,
@@ -354,9 +354,9 @@ public final class CreativeTabSelector {
         boolean hovered
     ) {
         int border = enabled && hovered ? 0xFF8099FF : 0xFF707070;
-        graphics.fill(RenderType.guiOverlay(), x, y, x + 16, y + 14, border);
-        graphics.fill(RenderType.guiOverlay(), x + 1, y + 1, x + 15, y + 13, 0xFF202020);
-        graphics.drawCenteredString(
+        graphics.fill( x, y, x + 16, y + 14, border);
+        graphics.fill( x + 1, y + 1, x + 15, y + 13, 0xFF202020);
+        graphics.centeredText(
             Minecraft.getInstance().font,
             label,
             x + 8,

@@ -11,15 +11,15 @@ import mezz.jei.common.input.IInternalKeyMappings;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.bookmarks.RecipeBookmark;
-import mezz.jei.gui.input.IUserInputHandler;
-import mezz.jei.gui.input.UserInput;
+import mezz.jei.common.input.IUserInputHandler;
+import mezz.jei.common.input.UserInput;
 import mezz.jei.gui.input.handlers.BookmarkInputHandler;
-import mezz.jei.gui.input.handlers.SameElementInputHandler;
+import mezz.jei.common.input.handlers.SameElementInputHandler;
 import mezz.jei.gui.recipes.IRecipeLayoutWithButtons;
 import mezz.jei.gui.recipes.RecipeGuiLayouts;
 import mezz.jei.gui.recipes.RecipesGui;
 import net.minecraft.client.Minecraft;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -129,7 +129,7 @@ public abstract class BookmarkInputHandlerMixin {
         if (output.isEmpty()) {
             return null;
         }
-        ResourceLocation recipeUid = ((mezz.jei.api.recipe.category.IRecipeCategory) layout.getRecipeCategory())
+        Identifier recipeUid = ((mezz.jei.api.recipe.category.IRecipeCategory) layout.getRecipeCategory())
             .getRegistryName(layout.getRecipe());
         if (recipeUid == null) {
             return null;
@@ -281,7 +281,7 @@ public abstract class BookmarkInputHandlerMixin {
      */
     private static boolean isJeiBookmarkedRecipeSortingEnabled() {
         try {
-            Object config = Internal.getJeiClientConfigs().getClientConfig();
+            Object config = Internal.getClientConfigs().getClientConfig();
             Object stages;
             try {
                 // JEI 15.x exposes getRecipeSorterStages() directly.

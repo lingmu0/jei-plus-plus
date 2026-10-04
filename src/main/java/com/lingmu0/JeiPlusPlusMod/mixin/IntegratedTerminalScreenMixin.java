@@ -1,7 +1,7 @@
 package com.lingmu0.JeiPlusPlusMod.mixin;
 
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeFavorites;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -23,7 +23,7 @@ public abstract class IntegratedTerminalScreenMixin {
         require = 0
     )
     private void jeiPlusPlus$renderHighlightsBeforeTooltip(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         CallbackInfo ci

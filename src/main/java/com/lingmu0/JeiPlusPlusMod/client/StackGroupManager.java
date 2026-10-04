@@ -12,7 +12,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -90,7 +90,7 @@ public final class StackGroupManager {
             if (!matcher.matches(stack)) {
                 return null;
             }
-            ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            Identifier itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
             if (itemId == null) {
                 return null;
             }
@@ -254,7 +254,7 @@ public final class StackGroupManager {
     }
 
     private static boolean matchesDefaultGroup(StackGroupCatalog.DefaultGroup group, ItemStack stack) {
-        ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
         if (id == null) {
             return false;
         }
@@ -495,7 +495,7 @@ public final class StackGroupManager {
             return null;
         }
         String location = value.startsWith("#") ? value.substring(1) : value;
-        ResourceLocation id = ResourceLocation.tryParse(location);
+        Identifier id = Identifier.tryParse(location);
         if (id == null) {
             return null;
         }
@@ -511,7 +511,7 @@ public final class StackGroupManager {
             return tagMatcher(value);
         }
         String location = value.startsWith("item:") ? value.substring("item:".length()) : value;
-        ResourceLocation id = ResourceLocation.tryParse(location);
+        Identifier id = Identifier.tryParse(location);
         if (id == null) {
             return null;
         }
@@ -525,7 +525,7 @@ public final class StackGroupManager {
         try {
             Pattern pattern = Pattern.compile(expression);
             matchers.add(stack -> {
-                ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+                Identifier id = BuiltInRegistries.ITEM.getKey(stack.getItem());
                 return id != null && pattern.matcher(id.toString()).matches();
             });
         } catch (RuntimeException exception) {

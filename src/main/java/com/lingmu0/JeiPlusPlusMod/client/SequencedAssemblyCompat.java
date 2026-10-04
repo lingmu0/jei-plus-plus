@@ -127,7 +127,7 @@ final class SequencedAssemblyCompat {
             return List.of();
         }
         List<ITypedIngredient<?>> result = new ArrayList<>();
-        for (ItemStack stack : ingredient.getItems()) {
+        for (ItemStack stack : ingredient.items().map(holder -> new ItemStack(holder.value())).toList()) {
             if (stack == null || stack.isEmpty()) {
                 continue;
             }

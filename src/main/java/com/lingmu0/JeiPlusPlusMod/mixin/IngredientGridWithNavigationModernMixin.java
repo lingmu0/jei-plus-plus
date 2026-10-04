@@ -4,9 +4,9 @@ import com.lingmu0.JeiPlusPlusMod.client.CreativeTabGridCompat;
 import mezz.jei.common.util.ImmutableRect2i;
 import mezz.jei.gui.input.IClickableIngredientInternal;
 import mezz.jei.gui.input.IDraggableIngredientInternal;
-import mezz.jei.gui.input.IUserInputHandler;
+import mezz.jei.common.input.IUserInputHandler;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Unique;
@@ -30,7 +30,7 @@ public abstract class IngredientGridWithNavigationModernMixin {
     @Inject(method = "drawForeground", at = @At("TAIL"), remap = false, require = 0)
     private void jeiPlusPlus$drawCreativeTabs(
         Minecraft minecraft,
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         float partialTicks,
@@ -42,7 +42,7 @@ public abstract class IngredientGridWithNavigationModernMixin {
     /** JEI 15.x/19.27-19.41 exposes the same pass as drawOnForeground. */
     @Inject(method = "drawOnForeground", at = @At("TAIL"), remap = false, require = 0)
     private void jeiPlusPlus$drawCreativeTabsLegacy(
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         CallbackInfo ci
@@ -59,7 +59,7 @@ public abstract class IngredientGridWithNavigationModernMixin {
             getClass().getDeclaredMethod(
                 "drawForeground",
                 Minecraft.class,
-                GuiGraphics.class,
+                GuiGraphicsExtractor.class,
                 int.class,
                 int.class,
                 float.class
@@ -73,7 +73,7 @@ public abstract class IngredientGridWithNavigationModernMixin {
     @Inject(method = "drawTooltips", at = @At("TAIL"), remap = false)
     private void jeiPlusPlus$drawCreativeTabTooltip(
         Minecraft minecraft,
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         CallbackInfo ci
@@ -84,7 +84,7 @@ public abstract class IngredientGridWithNavigationModernMixin {
     @Inject(method = "drawTooltips", at = @At("HEAD"), cancellable = true, remap = false, require = 0)
     private void jeiPlusPlus$hideUnderlyingTooltipsWhileSelectorOpen(
         Minecraft minecraft,
-        GuiGraphics graphics,
+        GuiGraphicsExtractor graphics,
         int mouseX,
         int mouseY,
         CallbackInfo ci

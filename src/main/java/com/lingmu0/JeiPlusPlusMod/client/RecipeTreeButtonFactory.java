@@ -8,7 +8,7 @@ import mezz.jei.api.gui.buttons.IIconButtonController;
 import mezz.jei.api.gui.drawable.IDrawable;
 import mezz.jei.api.helpers.IGuiHelper;
 import mezz.jei.api.recipe.advanced.IRecipeButtonControllerFactory;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
@@ -74,7 +74,7 @@ public final class RecipeTreeButtonFactory implements IRecipeButtonControllerFac
         }
 
         @Override
-        public void drawExtras(GuiGraphics graphics, Rect2i area, int mouseX, int mouseY, float partialTicks) {
+        public void drawExtras(GuiGraphicsExtractor graphics, Rect2i area, int mouseX, int mouseY, float partialTicks) {
             int x = area.getX() + Math.max(0, (area.getWidth() - 10 + 1) / 2);
             int y = area.getY() + Math.max(0, (area.getHeight() - 10 + 1) / 2);
             RecipeTreeIcons.drawTree(graphics, x, y);
