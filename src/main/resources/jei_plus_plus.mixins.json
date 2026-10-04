@@ -18,6 +18,7 @@
     "IngredientListRendererMixin",
     "IngredientListRendererLegacyMixin",
     "BookmarkInputHandlerMixin",
+    "CheatInputHandlerMixin",
     "BookmarkListAccessor",
     "BookmarkListMixin",
     "BookmarkOverlayMixin",
