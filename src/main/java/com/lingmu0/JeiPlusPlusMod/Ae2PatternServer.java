@@ -44,7 +44,7 @@ public final class Ae2PatternServer {
                 try {
                     pattern = encode(player, plan);
                 } catch (ReflectiveOperationException | IllegalArgumentException error) {
-                    LOGGER.debug("Could not encode AE2 pattern {}", plan.recipeId(), error);
+                    LOGGER.warn("Could not encode AE2 pattern for recipe {}", plan.recipeId(), error);
                     invalid++;
                     continue;
                 }
@@ -105,24 +105,22 @@ public final class Ae2PatternServer {
         if (plan.inputs().isEmpty() || plan.outputs().isEmpty() || plan.outputs().get(0).isEmpty()) return null;
         Class<?> helper = Class.forName("appeng.api.crafting.PatternDetailsHelper");
         Object recipe = recipe(player, plan.recipeId());
-        if (recipe != null) {
+        // In 1.20.1 RecipeManager.byKey returns the recipe itself. Only
+        // CraftingRecipe can be encoded as an AE2 crafting pattern; calling
+        // value() on a smelting or other machine recipe throws and used to
+        // count it as invalid instead of reaching the processing fallback.
+        if (recipe instanceof CraftingRecipe) {
             ItemStack[] grid = new ItemStack[9];
             Arrays.fill(grid, ItemStack.EMPTY);
             for (int i = 0; i < plan.inputs().size() && i < 9; i++) {
                 grid[i] = plan.inputs().get(i).copy();
                 if (!grid[i].isEmpty()) grid[i].setCount(1);
             }
-            Object value = recipe;
-            if (!(value instanceof CraftingRecipe)) value = call(value, "value");
-            if (value instanceof CraftingRecipe) {
-                for (Method method : helper.getMethods()) {
-                    if (method.getName().equals("encodeCraftingPattern") && method.getParameterCount() == 5) {
-                        Object argument = method.getParameterTypes()[0].isInstance(recipe) ? recipe : value;
-                        if (method.getParameterTypes()[0].isInstance(argument)) {
-                            return (ItemStack) method.invoke(null, argument, grid, plan.outputs().get(0),
-                                    plan.substitute(), plan.substitute());
-                        }
-                    }
+            for (Method method : helper.getMethods()) {
+                if (method.getName().equals("encodeCraftingPattern") && method.getParameterCount() == 5
+                        && method.getParameterTypes()[0].isInstance(recipe)) {
+                    return (ItemStack) method.invoke(null, recipe, grid, plan.outputs().get(0),
+                            plan.substitute(), plan.substitute());
                 }
             }
         }
