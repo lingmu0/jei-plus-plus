@@ -2,8 +2,6 @@ package com.lingmu0.JeiPlusPlusMod.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import mezz.jei.common.util.ImmutableRect2i;
-import mezz.jei.gui.input.IUserInputHandler;
-import mezz.jei.gui.input.UserInput;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.RenderType;
@@ -167,57 +165,60 @@ public final class CreativeTabBar {
     public static boolean handleClick(
         IngredientListFeatureSource source,
         ImmutableRect2i area,
-        UserInput input
+        Object input
     ) {
+        var key = JeiReflectionCompat.inputKey(input);
         if (source != null && source.jeiPlusPlus$isCreativeTabSelectorOpen()) {
             return CreativeTabSelector.handleClick(source, area, input);
         }
         if (!isEnabled(source)
-            || input.getKey().getType() != InputConstants.Type.MOUSE
-            || !area.contains(input.getMouseX(), input.getMouseY())) {
+            || key.getType() != InputConstants.Type.MOUSE
+            || !area.contains(JeiReflectionCompat.inputMouseX(input), JeiReflectionCompat.inputMouseY(input))) {
             return false;
         }
-        if (input.getKey().getValue() == 1) {
-            if (!input.isSimulate()) {
+        if (key.getValue() == 1) {
+            if (!JeiReflectionCompat.isInputSimulated(input)) {
                 source.jeiPlusPlus$setCreativeTabSelectorPage(0);
                 source.jeiPlusPlus$setCreativeTabSelectorOpen(true);
             }
             return true;
         }
-        if (input.getKey().getValue() != 0) {
+        if (key.getValue() != 0) {
             return false;
         }
         int capacity = getCapacity(area);
         int pageCount = getPageCount(source.jeiPlusPlus$getCreativeTabs().size() + 1, capacity);
         int page = clampPage(source.jeiPlusPlus$getCreativeTabPage(), pageCount);
-        boolean previous = isPageButton(area, input.getMouseX(), input.getMouseY(), true);
-        boolean next = isPageButton(area, input.getMouseX(), input.getMouseY(), false);
+        double mouseX = JeiReflectionCompat.inputMouseX(input);
+        double mouseY = JeiReflectionCompat.inputMouseY(input);
+        boolean previous = isPageButton(area, mouseX, mouseY, true);
+        boolean next = isPageButton(area, mouseX, mouseY, false);
         if (previous || next) {
-            if (!input.isSimulate()) {
+            if (!JeiReflectionCompat.isInputSimulated(input)) {
                 int target = page + (next ? 1 : -1);
                 source.jeiPlusPlus$setCreativeTabPage(Math.floorMod(target, pageCount));
             }
             return true;
         }
 
-        int tabIndex = getTabAt(source, area, input.getMouseX(), input.getMouseY(), page, capacity);
+        int tabIndex = getTabAt(source, area, mouseX, mouseY, page, capacity);
         if (tabIndex < 0) {
             return false;
         }
-        if (!input.isSimulate()) {
+        if (!JeiReflectionCompat.isInputSimulated(input)) {
             source.jeiPlusPlus$setCreativeTabPage(tabIndex / capacity);
             source.jeiPlusPlus$selectCreativeTab(tabIndex);
         }
         return true;
     }
 
-    public static Optional<IUserInputHandler> handleScroll(
+    public static Optional<Object> handleScroll(
         IngredientListFeatureSource source,
         ImmutableRect2i area,
         double mouseX,
         double mouseY,
         double scrollDeltaY,
-        IUserInputHandler self
+        Object self
     ) {
         if (source != null && source.jeiPlusPlus$isCreativeTabSelectorOpen()) {
             if (CreativeTabSelector.handleScroll(source, mouseX, mouseY, scrollDeltaY)) {

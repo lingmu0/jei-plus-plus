@@ -1,17 +1,12 @@
 package com.lingmu0.JeiPlusPlusMod.client;
 
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
-import mezz.jei.common.input.IInternalKeyMappings;
 import mezz.jei.common.util.ImmutableRect2i;
-import mezz.jei.gui.input.IUserInputHandler;
-import mezz.jei.gui.input.UserInput;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.screens.Screen;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.Optional;
 
 /** Shared reflective bridge for JEI's pre- and post-19.42 ingredient grids. */
 public final class CreativeTabGridCompat {
@@ -58,8 +53,10 @@ public final class CreativeTabGridCompat {
         }
     }
 
-    public static IUserInputHandler wrapInput(Object owner, IUserInputHandler delegate) {
-        return new CreativeTabInputHandler(owner, delegate);
+    public static Object wrapInput(Object owner, Object delegate) {
+        return JeiReflectionCompat.customInputHandler(
+            (proxy, method, args) -> handleTabInput(owner, delegate, proxy, method, args)
+        );
     }
 
     public static boolean isSelectorOpen(Object owner) {
@@ -103,55 +100,52 @@ public final class CreativeTabGridCompat {
     private record GridAccess(Field ingredientSource, Method getBackgroundArea, Method getBackButtonArea) {
     }
 
-    private static final class CreativeTabInputHandler implements IUserInputHandler {
-        private final Object owner;
-        private final IUserInputHandler delegate;
-
-        private CreativeTabInputHandler(Object owner, IUserInputHandler delegate) {
-            this.owner = owner;
-            this.delegate = delegate;
-        }
-
-        @Override
-        public Optional<IUserInputHandler> handleUserInput(
-            Screen screen,
-            UserInput input,
-            IInternalKeyMappings keyBindings
-        ) {
-            IngredientListFeatureSource source = getFeatureSource(owner);
-            if (source != null && CreativeTabBar.handleClick(source, getArea(owner), input)) {
-                return Optional.of(this);
+    private static Object handleTabInput(
+        Object owner,
+        Object delegate,
+        Object proxy,
+        Method method,
+        Object[] args
+    ) throws Throwable {
+        switch (method.getName()) {
+            case "equals" -> {
+                return proxy == args[0];
             }
-            return delegate.handleUserInput(screen, input, keyBindings);
-        }
-
-        @Override
-        public void unfocus() {
-            delegate.unfocus();
-        }
-
-        @Override
-        public Optional<IUserInputHandler> handleMouseScrolled(
-            double mouseX,
-            double mouseY,
-            double scrollDeltaX,
-            double scrollDeltaY
-        ) {
-            IngredientListFeatureSource source = getFeatureSource(owner);
-            if (source != null) {
-                Optional<IUserInputHandler> result = CreativeTabBar.handleScroll(
-                    source,
-                    getArea(owner),
-                    mouseX,
-                    mouseY,
-                    scrollDeltaY,
-                    this
-                );
-                if (result.isPresent()) {
-                    return result;
+            case "hashCode" -> {
+                return System.identityHashCode(proxy);
+            }
+            case "toString" -> {
+                return "JEI++ creative tab input handler";
+            }
+            case "unfocus" -> {
+                return JeiReflectionCompat.invokeInputHandler(delegate, method, args);
+            }
+            case "handleUserInput" -> {
+                IngredientListFeatureSource source = getFeatureSource(owner);
+                return source != null && CreativeTabBar.handleClick(source, getArea(owner), args[1])
+                    ? java.util.Optional.of(proxy)
+                    : JeiReflectionCompat.invokeInputHandler(delegate, method, args);
+            }
+            case "handleMouseScrolled" -> {
+                IngredientListFeatureSource source = getFeatureSource(owner);
+                if (source != null) {
+                    java.util.Optional<Object> result = CreativeTabBar.handleScroll(
+                        source,
+                        getArea(owner),
+                        ((Number) args[0]).doubleValue(),
+                        ((Number) args[1]).doubleValue(),
+                        ((Number) args[3]).doubleValue(),
+                        proxy
+                    );
+                    if (result.isPresent()) {
+                        return result;
+                    }
                 }
+                return JeiReflectionCompat.invokeInputHandler(delegate, method, args);
             }
-            return delegate.handleMouseScrolled(mouseX, mouseY, scrollDeltaX, scrollDeltaY);
+            default -> {
+                return JeiReflectionCompat.invokeInputHandler(delegate, method, args);
+            }
         }
     }
 }

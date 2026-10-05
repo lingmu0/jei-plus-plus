@@ -2,19 +2,15 @@ package com.lingmu0.JeiPlusPlusMod.mixin;
 
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
 import com.lingmu0.JeiPlusPlusMod.client.CreativeTabGridCompat;
+import com.lingmu0.JeiPlusPlusMod.client.JeiReflectionCompat;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeFavorites;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeScreen;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeSession;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeSidebarButtonController;
 import com.mojang.blaze3d.platform.InputConstants;
-import mezz.jei.common.input.IInternalKeyMappings;
 import mezz.jei.common.util.ImmutableRect2i;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.elements.IconButton;
-import mezz.jei.gui.input.IUserInputHandler;
-import mezz.jei.gui.input.UserInput;
-import mezz.jei.gui.input.handlers.CombinedInputHandler;
-import mezz.jei.gui.input.handlers.ProxyInputHandler;
 import mezz.jei.gui.overlay.bookmarks.BookmarkOverlay;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -164,20 +160,22 @@ public abstract class BookmarkOverlayMixin {
     }
 
     @Inject(method = "createInputHandler", at = @At("RETURN"), cancellable = true, remap = false)
-    private void jeiPlusPlus$addTreeButtonInput(CallbackInfoReturnable<IUserInputHandler> cir) {
+    private void jeiPlusPlus$addTreeButtonInput(CallbackInfoReturnable<Object> cir) {
         jeiPlusPlus$ensureTreeButton();
-        IUserInputHandler original = cir.getReturnValue();
-        IUserInputHandler treeButtonInput = new CombinedInputHandler(
+        Object original = cir.getReturnValue();
+        Object buttonInput = JeiReflectionCompat.invokeNoArgsUnchecked(jeiPlusPlus$treeButton, "createInputHandler");
+        Object rightClickInput = JeiReflectionCompat.customInputHandler(this::jeiPlusPlus$handleRightClickInput);
+        Object treeButtonInput = JeiReflectionCompat.combineInputHandlers(
             "JeiPlusPlusRecipeTreeButton",
-            new JeiPlusPlusRightClickHandler(),
-            jeiPlusPlus$treeButton.createInputHandler()
+            rightClickInput,
+            buttonInput
         );
-        IUserInputHandler normalScreenInput = new CombinedInputHandler(
+        Object normalScreenInput = JeiReflectionCompat.combineInputHandlers(
             "JeiPlusPlusRecipeTreeAndBookmarks",
             treeButtonInput,
             original
         );
-        cir.setReturnValue(new ProxyInputHandler(() -> {
+        cir.setReturnValue(JeiReflectionCompat.proxyInputHandler(() -> {
             if (!JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get()) {
                 return original;
             }
@@ -251,25 +249,38 @@ public abstract class BookmarkOverlayMixin {
     }
 
     @Unique
-    private final class JeiPlusPlusRightClickHandler implements IUserInputHandler {
-        @Override
-        public Optional<IUserInputHandler> handleUserInput(
-            Screen screen,
-            UserInput input,
-            IInternalKeyMappings keyBindings
-        ) {
-            if (input.getKey().getType() != InputConstants.Type.MOUSE
-                || input.getKey().getValue() != 1
-                || !jeiPlusPlus$treeButton.isMouseOver(input.getMouseX(), input.getMouseY())) {
-                return Optional.empty();
+    private Object jeiPlusPlus$handleRightClickInput(Object proxy, Method method, Object[] args) {
+        switch (method.getName()) {
+            case "equals" -> {
+                return proxy == args[0];
             }
-            if (!input.isSimulate()) {
-                RecipeTreeSession.clear();
-                if (screen instanceof RecipeTreeScreen treeScreen) {
-                    treeScreen.onClose();
-                }
+            case "hashCode" -> {
+                return System.identityHashCode(proxy);
             }
-            return Optional.of(this);
+            case "toString" -> {
+                return "JEI++ recipe-tree button input handler";
+            }
         }
+        if (!"handleUserInput".equals(method.getName())) {
+            return method.getReturnType() == void.class ? null : Optional.empty();
+        }
+        Screen screen = (Screen) args[0];
+        Object input = args[1];
+        InputConstants.Key key = JeiReflectionCompat.inputKey(input);
+        if (key.getType() != InputConstants.Type.MOUSE
+            || key.getValue() != 1
+            || !jeiPlusPlus$treeButton.isMouseOver(
+                JeiReflectionCompat.inputMouseX(input),
+                JeiReflectionCompat.inputMouseY(input)
+            )) {
+            return Optional.empty();
+        }
+        if (!JeiReflectionCompat.isInputSimulated(input)) {
+            RecipeTreeSession.clear();
+            if (screen instanceof RecipeTreeScreen treeScreen) {
+                treeScreen.onClose();
+            }
+        }
+        return Optional.of(proxy);
     }
 }
