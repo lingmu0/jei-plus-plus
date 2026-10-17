@@ -2,7 +2,6 @@ package com.lingmu0.JeiPlusPlusMod.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import mezz.jei.common.util.ImmutableRect2i;
-import mezz.jei.gui.input.UserInput;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.RenderType;
@@ -144,37 +143,39 @@ public final class CreativeTabSelector {
     public static boolean handleClick(
         IngredientListFeatureSource source,
         ImmutableRect2i tabBarArea,
-        UserInput input
+        Object input
     ) {
-        if (input.getKey().getType() == InputConstants.Type.KEYSYM) {
-            if (input.getKey().getValue() == InputConstants.KEY_ESCAPE && !input.isSimulate()) {
+        InputConstants.Key key = JeiReflectionCompat.inputKey(input);
+        double mouseX = JeiReflectionCompat.inputMouseX(input);
+        double mouseY = JeiReflectionCompat.inputMouseY(input);
+        boolean simulate = JeiReflectionCompat.isInputSimulated(input);
+        if (key.getType() == InputConstants.Type.KEYSYM) {
+            if (key.getValue() == InputConstants.KEY_ESCAPE && !simulate) {
                 source.jeiPlusPlus$setCreativeTabSelectorOpen(false);
             }
             return true;
         }
-        if (input.getKey().getType() != InputConstants.Type.MOUSE) {
+        if (key.getType() != InputConstants.Type.MOUSE) {
             return true;
         }
 
         Layout layout = getLayout();
-        double mouseX = input.getMouseX();
-        double mouseY = input.getMouseY();
-        int button = input.getKey().getValue();
+        int button = key.getValue();
         if (button == 0 && isCloseButton(layout, mouseX, mouseY)) {
-            if (!input.isSimulate()) {
+            if (!simulate) {
                 source.jeiPlusPlus$setCreativeTabSelectorOpen(false);
             }
             return true;
         }
 
         if (button == 0 && isPageButton(layout, mouseX, mouseY, true)) {
-            if (!input.isSimulate()) {
+            if (!simulate) {
                 setPage(source, layout, source.jeiPlusPlus$getCreativeTabSelectorPage() - 1);
             }
             return true;
         }
         if (button == 0 && isPageButton(layout, mouseX, mouseY, false)) {
-            if (!input.isSimulate()) {
+            if (!simulate) {
                 setPage(source, layout, source.jeiPlusPlus$getCreativeTabSelectorPage() + 1);
             }
             return true;
@@ -182,7 +183,7 @@ public final class CreativeTabSelector {
 
         int index = getEntryAt(source, layout, mouseX, mouseY);
         if (index >= 0) {
-            if (!input.isSimulate()) {
+            if (!simulate) {
                 if (button == 0) {
                     int capacity = CreativeTabBar.getCapacity(tabBarArea);
                     int pageCount = getPageCount(source.jeiPlusPlus$getCreativeTabs().size() + 1, capacity);
@@ -197,7 +198,7 @@ public final class CreativeTabSelector {
         }
 
         if (!contains(mouseX, mouseY, layout.x(), layout.y(), layout.width(), layout.height())) {
-            if (!input.isSimulate()) {
+            if (!simulate) {
                 source.jeiPlusPlus$setCreativeTabSelectorOpen(false);
             }
         }

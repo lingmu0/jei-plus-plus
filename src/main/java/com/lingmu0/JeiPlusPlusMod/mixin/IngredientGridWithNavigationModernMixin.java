@@ -4,7 +4,6 @@ import com.lingmu0.JeiPlusPlusMod.client.CreativeTabGridCompat;
 import mezz.jei.common.util.ImmutableRect2i;
 import mezz.jei.gui.input.IClickableIngredientInternal;
 import mezz.jei.gui.input.IDraggableIngredientInternal;
-import mezz.jei.gui.input.IUserInputHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import org.spongepowered.asm.mixin.Mixin;
@@ -96,7 +95,7 @@ public abstract class IngredientGridWithNavigationModernMixin {
     }
 
     @Inject(method = "createInputHandler", at = @At("RETURN"), cancellable = true, remap = false)
-    private void jeiPlusPlus$wrapCreativeTabInput(CallbackInfoReturnable<IUserInputHandler> cir) {
+    private void jeiPlusPlus$wrapCreativeTabInput(CallbackInfoReturnable<Object> cir) {
         cir.setReturnValue(CreativeTabGridCompat.wrapInput(this, cir.getReturnValue()));
     }
 

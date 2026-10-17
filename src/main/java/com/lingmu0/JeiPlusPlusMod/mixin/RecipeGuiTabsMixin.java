@@ -1,21 +1,19 @@
 package com.lingmu0.JeiPlusPlusMod.mixin;
 
+import com.lingmu0.JeiPlusPlusMod.client.JeiReflectionCompat;
 import mezz.jei.common.util.ImmutableRect2i;
 import mezz.jei.gui.PageNavigation;
-import mezz.jei.gui.input.IUserInputHandler;
 import mezz.jei.gui.recipes.IRecipeGuiLogic;
 import mezz.jei.gui.recipes.RecipeGuiTabs;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import mezz.jei.common.input.IInternalKeyMappings;
-import mezz.jei.gui.input.UserInput;
-import net.minecraft.client.gui.screens.Screen;
-
+import java.lang.reflect.Method;
 import java.util.Optional;
 
 /** Adds category navigation to the row of recipe-category icons. */
@@ -28,50 +26,68 @@ public abstract class RecipeGuiTabsMixin {
     @Shadow public abstract boolean previousPage();
 
     @Inject(method = "createInputHandler", at = @At("RETURN"), cancellable = true, remap = false)
-    private void jeiPlusPlus$wrapTabInput(CallbackInfoReturnable<IUserInputHandler> cir) {
-        cir.setReturnValue(new TabScrollInputHandler(this, cir.getReturnValue()));
+    private void jeiPlusPlus$wrapTabInput(CallbackInfoReturnable<Object> cir) {
+        Object delegate = cir.getReturnValue();
+        Object[] combined = new Object[1];
+        Object pageScrollInput = JeiReflectionCompat.customInputHandler(
+            (proxy, method, args) -> jeiPlusPlus$handlePageScrollInput(combined, proxy, method, args)
+        );
+        combined[0] = JeiReflectionCompat.combineInputHandlers(
+            "JEI++ recipe tab input handler",
+            pageScrollInput,
+            delegate
+        );
+        cir.setReturnValue(combined[0]);
     }
 
-    private static final class TabScrollInputHandler implements IUserInputHandler {
-        private final RecipeGuiTabsMixin owner;
-        private final IUserInputHandler delegate;
-
-        private TabScrollInputHandler(RecipeGuiTabsMixin owner, IUserInputHandler delegate) {
-            this.owner = owner;
-            this.delegate = delegate;
-        }
-
-        @Override
-        public Optional<IUserInputHandler> handleUserInput(Screen screen, UserInput input, IInternalKeyMappings keyBindings) {
-            return delegate.handleUserInput(screen, input, keyBindings);
-        }
-
-        @Override
-        public void unfocus() {
-            delegate.unfocus();
-        }
-
-        @Override
-        public Optional<IUserInputHandler> handleMouseScrolled(double mouseX, double mouseY, double scrollDeltaX, double scrollDeltaY) {
-            if (scrollDeltaY != 0 && owner.isPageNavigationBand(mouseX, mouseY)) {
-                if (scrollDeltaY < 0) {
-                    owner.nextPage();
-                } else {
-                    owner.previousPage();
-                }
-                return Optional.of(this);
+    @Unique
+    private Object jeiPlusPlus$handlePageScrollInput(
+        Object[] combined,
+        Object proxy,
+        Method method,
+        Object[] args
+    ) {
+        switch (method.getName()) {
+            case "equals" -> {
+                return proxy == args[0];
             }
-            if (scrollDeltaY != 0 && owner.area.contains(mouseX, mouseY)) {
-                if (scrollDeltaY < 0) {
-                    owner.recipeGuiLogic.nextRecipeCategory();
-                } else {
-                    owner.recipeGuiLogic.previousRecipeCategory();
-                }
-                return Optional.of(this);
+            case "hashCode" -> {
+                return System.identityHashCode(proxy);
             }
-            return delegate.handleMouseScrolled(mouseX, mouseY, scrollDeltaX, scrollDeltaY);
+            case "toString" -> {
+                return "JEI++ recipe tab input handler";
+            }
+            case "unfocus" -> {
+                return null;
+            }
+        }
+        if (!"handleMouseScrolled".equals(method.getName())) {
+            return Optional.empty();
         }
 
+        double mouseX = ((Number) args[0]).doubleValue();
+        double mouseY = ((Number) args[1]).doubleValue();
+        double scrollDeltaY = ((Number) args[3]).doubleValue();
+        if (scrollDeltaY == 0) {
+            return Optional.empty();
+        }
+        if (isPageNavigationBand(mouseX, mouseY)) {
+            if (scrollDeltaY < 0) {
+                nextPage();
+            } else {
+                previousPage();
+            }
+            return Optional.of(combined[0]);
+        }
+        if (area.contains(mouseX, mouseY)) {
+            if (scrollDeltaY < 0) {
+                recipeGuiLogic.nextRecipeCategory();
+            } else {
+                recipeGuiLogic.previousRecipeCategory();
+            }
+            return Optional.of(combined[0]);
+        }
+        return Optional.empty();
     }
 
     /**
