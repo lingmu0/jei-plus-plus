@@ -147,9 +147,9 @@ JSON 分组示例：
 | --- | --- | --- | --- | --- |
 | 1.20.1 | Forge 47.4.22 | 17 | JEI 15.59.0.210 | 1.0.7-1.20.1 |
 | 1.21.1 | NeoForge 21.1.238 | 21 | JEI 19.54.0.429 | 1.0.7-1.21.1 |
-| 26.1.2 | NeoForge 26.1.2.111 | 25 | JEI 29.43.0.106 | 1.0.7-26.1.2 |
+| 26.1.2 | NeoForge 26.1.2.111 | 25 | JEI 29.47.0.111 | 1.0.8-26.1.2 |
 
-1.20.1 的声明兼容范围从 JEI 15.19.5.99 起，1.21.1 的声明兼容范围从 JEI 19.27.0 起，26.1.2 的声明兼容范围从 JEI 29.43.0.106 起；表中 JEI 版本是当前开发依赖。
+1.20.1 的声明兼容范围从 JEI 15.19.5.99 起，1.21.1 的声明兼容范围从 JEI 19.27.0 起，26.1.2 的声明兼容范围从 JEI 29.47.0.111 起；表中 JEI 版本是当前开发依赖。
 
 JEI 是可选的客户端依赖；一般功能仅需客户端安装 JEI++。AE2 配方树批量制作样板需要服务端也安装 JEI++，未安装时客户端会提示功能不可用。
 
@@ -235,8 +235,8 @@ The addon supports multiple JEI layout, bookmark, ingredient-list, and renderer 
 | --- | --- | --- | --- | --- |
 | 1.20.1 | Forge 47.4.22 | 17 | JEI 15.59.0.210 | 1.0.7-1.20.1 |
 | 1.21.1 | NeoForge 21.1.238 | 21 | JEI 19.54.0.429 | 1.0.7-1.21.1 |
-| 26.1.2 | NeoForge 26.1.2.111 | 25 | JEI 29.43.0.106 | 1.0.7-26.1.2 |
+| 26.1.2 | NeoForge 26.1.2.111 | 25 | JEI 29.47.0.111 | 1.0.8-26.1.2 |
 
-The declared compatibility floor is JEI 15.19.5.99 for 1.20.1, JEI 19.27.0 for 1.21.1, and JEI 29.43.0.106 for 26.1.2; the table lists the current JEI development dependencies.
+The declared compatibility floor is JEI 15.19.5.99 for 1.20.1, JEI 19.27.0 for 1.21.1, and JEI 29.47.0.111 for 26.1.2; the table lists the current JEI development dependencies.
 
 JEI is an optional client dependency, and most JEI++ features work with only a client installation. AE2 recipe-tree bulk pattern creation also requires JEI++ on the server; without it, the client reports that this feature is unavailable.

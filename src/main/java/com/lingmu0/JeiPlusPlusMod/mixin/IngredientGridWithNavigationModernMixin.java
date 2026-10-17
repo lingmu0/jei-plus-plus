@@ -4,7 +4,7 @@ import com.lingmu0.JeiPlusPlusMod.client.CreativeTabGridCompat;
 import mezz.jei.common.util.ImmutableRect2i;
 import mezz.jei.gui.input.IClickableIngredientInternal;
 import mezz.jei.gui.input.IDraggableIngredientInternal;
-import mezz.jei.common.input.IUserInputHandler;
+import mezz.jei.common.input.IInputTarget;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import org.spongepowered.asm.mixin.Mixin;
@@ -95,8 +95,15 @@ public abstract class IngredientGridWithNavigationModernMixin {
         }
     }
 
+    // JEI now hit-tests the input area before dispatching controls. Include the
+    // reserved tab row and modal selector, which lie outside the native grid.
+    @Inject(method = "isMouseOver", at = @At("RETURN"), cancellable = true, remap = false)
+    private void jeiPlusPlus$includeTabInputArea(double mouseX, double mouseY, CallbackInfoReturnable<Boolean> cir) {
+        if (CreativeTabGridCompat.isMouseOverTabs(this, mouseX, mouseY)) cir.setReturnValue(true);
+    }
+
     @Inject(method = "createInputHandler", at = @At("RETURN"), cancellable = true, remap = false)
-    private void jeiPlusPlus$wrapCreativeTabInput(CallbackInfoReturnable<IUserInputHandler> cir) {
+    private void jeiPlusPlus$wrapCreativeTabInput(CallbackInfoReturnable<IInputTarget> cir) {
         cir.setReturnValue(CreativeTabGridCompat.wrapInput(this, cir.getReturnValue()));
     }
 

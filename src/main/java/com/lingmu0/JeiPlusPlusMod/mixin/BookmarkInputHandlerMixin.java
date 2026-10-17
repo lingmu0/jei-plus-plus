@@ -7,14 +7,13 @@ import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.common.Internal;
-import mezz.jei.common.input.IInternalKeyMappings;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.bookmarks.RecipeBookmark;
-import mezz.jei.common.input.IUserInputHandler;
 import mezz.jei.common.input.UserInput;
-import mezz.jei.gui.input.handlers.BookmarkInputHandler;
-import mezz.jei.common.input.handlers.SameElementInputHandler;
+import mezz.jei.gui.input.handlers.BookmarkCommands;
+import mezz.jei.common.input.interaction.IInputInteraction;
+import mezz.jei.common.input.interaction.InputAction;
 import mezz.jei.gui.recipes.IRecipeLayoutWithButtons;
 import mezz.jei.gui.recipes.RecipeGuiLayouts;
 import mezz.jei.gui.recipes.RecipesGui;
@@ -34,88 +33,37 @@ import java.util.Objects;
 import java.util.Optional;
 
 /** Uses the preferred recipe only for output-slot bookmarks. */
-@Mixin(value = BookmarkInputHandler.class, remap = false)
+@Mixin(value = BookmarkCommands.class, remap = false)
 public abstract class BookmarkInputHandlerMixin {
     @Shadow @Final private BookmarkList bookmarkList;
 
-    /**
-     * JEI 15.x handles an output-slot bookmark in a separate
-     * {@code handleRecipeBookmark} method before it reaches the ingredient
-     * handler below.  If JEI's BOOKMARKED recipe-sort stage is off, route that
-     * click through JEI's normal ingredient path instead of allowing the
-     * recipe bookmark to be created.
-     */
-    @Inject(
-        method = "handleRecipeBookmark",
-        at = @At("HEAD"),
-        cancellable = true,
-        require = 0,
-        remap = false
-    )
-    private void jeiPlusPlus$gateRecipeBookmark(
-        UserInput input,
-        CallbackInfoReturnable<java.util.Optional<IUserInputHandler>> cir
-    ) {
-        if (JeiPlusPlusConfig.PREFER_RECIPE_BOOKMARK_ON_OUTPUT.get()
-            && !isJeiBookmarkedRecipeSortingEnabled()) {
-            cir.setReturnValue(java.util.Optional.empty());
-        }
-    }
-
-    @Inject(
-        method = {"handleBookmark", "handleIngredientBookmark"},
-        at = @At("HEAD"),
-        cancellable = true,
-        require = 0,
-        remap = false
-    )
-    private void jeiPlusPlus$preferRecipeBookmark(
-        UserInput input,
-        IInternalKeyMappings keyBindings,
-        CallbackInfoReturnable<java.util.Optional<IUserInputHandler>> cir
-    ) {
+    @Inject(method = "prepareRecipeBookmarkAction", at = @At("HEAD"), cancellable = true, remap = false)
+    private void jeiPlusPlus$preferRecipeBookmark(UserInput input,
+        CallbackInfoReturnable<Optional<IInputInteraction>> cir) {
         IJeiRuntime runtime = Internal.getJeiRuntime();
         if (!(runtime.getRecipesGui() instanceof RecipesGui recipesGui)
-            || Minecraft.getInstance().screen != recipesGui) {
-            // RecipesGui remains alive after it is closed. Do not let its last
-            // layout handle bookmarks clicked in the player's inventory.
-            return;
-        }
-
+            || Minecraft.getInstance().screen != recipesGui) return;
         RecipeGuiLayouts layouts = ((RecipesGuiAccessor) (Object) recipesGui).jeiPlusPlus$getLayouts();
-        for (IRecipeLayoutWithButtons<?> layoutWithButtons :
+        for (IRecipeLayoutWithButtons<?> withButtons :
             ((RecipeGuiLayoutsAccessor) (Object) layouts).jeiPlusPlus$getRecipeLayoutsWithButtons()) {
-            IRecipeLayoutDrawable<?> layout = layoutWithButtons.getRecipeLayout();
-            java.util.Optional<RecipeSlotUnderMouse> under = layout.getSlotUnderMouse(input.getMouseX(), input.getMouseY());
-            if (under.isEmpty() || under.get().slot().isEmpty()) {
-                continue;
-            }
-            // Do not turn an ingredient in an input slot into a recipe bookmark.
+            IRecipeLayoutDrawable<?> layout = withButtons.getRecipeLayout();
+            Optional<RecipeSlotUnderMouse> under = layout.getSlotUnderMouse(input.getMouseX(), input.getMouseY());
+            if (under.isEmpty() || under.get().slot().isEmpty()) continue;
             if (under.get().slot().getRole() != RecipeIngredientRole.OUTPUT) {
+                cir.setReturnValue(Optional.empty());
                 return;
             }
-            java.util.Optional<ITypedIngredient<?>> output = under.get().slot().getDisplayedIngredient()
+            Optional<ITypedIngredient<?>> output = under.get().slot().getDisplayedIngredient()
                 .or(() -> under.get().slot().getAllIngredients().findFirst());
-            if (output.isEmpty()) {
-                continue;
-            }
-            if (!input.isSimulate()) {
-                if (JeiPlusPlusConfig.PREFER_RECIPE_BOOKMARK_ON_OUTPUT.get()
-                    && isJeiBookmarkedRecipeSortingEnabled()) {
-                    RecipeBookmark<?, ?> bookmark = createBookmarkForHoveredOutput(layout, output, runtime);
-                    if (bookmark != null) {
-                        bookmarkList.toggleBookmark(bookmark);
-                    } else {
-                        toggleIngredientBookmark(bookmarkList,
-                            runtime.getIngredientManager().normalizeTypedIngredient(output.get()));
-                    }
-                } else {
-                    toggleIngredientBookmark(bookmarkList,
-                        runtime.getIngredientManager().normalizeTypedIngredient(output.get()));
-                }
-            }
-            IUserInputHandler currentHandler = (IUserInputHandler) (Object) this;
-            cir.setReturnValue(java.util.Optional.of(new SameElementInputHandler(currentHandler, layout::isMouseOver)));
+            if (output.isEmpty()) continue;
+            cir.setReturnValue(Optional.of(InputAction.run(() -> {
+                RecipeBookmark<?, ?> bookmark = JeiPlusPlusConfig.PREFER_RECIPE_BOOKMARK_ON_OUTPUT.get()
+                    && isJeiBookmarkedRecipeSortingEnabled()
+                    ? createBookmarkForHoveredOutput(layout, output, runtime) : null;
+                if (bookmark != null) bookmarkList.toggleBookmark(bookmark);
+                else toggleIngredientBookmark(bookmarkList,
+                    runtime.getIngredientManager().normalizeTypedIngredient(output.get()));
+            }).within(layout::isMouseOver)));
             return;
         }
     }

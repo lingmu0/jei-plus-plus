@@ -2,10 +2,11 @@ package com.lingmu0.JeiPlusPlusMod.client;
 
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
 import mezz.jei.common.input.IInternalKeyMappings;
-import mezz.jei.api.gui.handlers.IGuiProperties;
 import mezz.jei.common.util.ImmutableRect2i;
-import mezz.jei.common.input.IUserInputHandler;
+import mezz.jei.common.input.IInputTarget;
 import mezz.jei.common.input.UserInput;
+import mezz.jei.common.input.interaction.IInputInteraction;
+import mezz.jei.common.input.interaction.InputAction;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 
@@ -59,8 +60,13 @@ public final class CreativeTabGridCompat {
         }
     }
 
-    public static IUserInputHandler wrapInput(Object owner, IUserInputHandler delegate) {
+    public static IInputTarget wrapInput(Object owner, IInputTarget delegate) {
         return new CreativeTabInputHandler(owner, delegate);
+    }
+
+    public static boolean isMouseOverTabs(Object owner, double mouseX, double mouseY) {
+        return getFeatureSource(owner) != null && JeiPlusPlusConfig.CREATIVE_TAB_BAR_ENABLED.get()
+            && (isSelectorOpen(owner) || getArea(owner).contains(mouseX, mouseY));
     }
 
     public static boolean isSelectorOpen(Object owner) {
@@ -104,56 +110,33 @@ public final class CreativeTabGridCompat {
     private record GridAccess(Field ingredientSource, Method getBackgroundArea, Method getBackButtonArea) {
     }
 
-    private static final class CreativeTabInputHandler implements IUserInputHandler {
+    private static final class CreativeTabInputHandler implements IInputTarget {
         private final Object owner;
-        private final IUserInputHandler delegate;
+        private final IInputTarget delegate;
 
-        private CreativeTabInputHandler(Object owner, IUserInputHandler delegate) {
+        private CreativeTabInputHandler(Object owner, IInputTarget delegate) {
             this.owner = owner;
             this.delegate = delegate;
         }
 
         @Override
-        public Optional<IUserInputHandler> handleUserInput(
-            Screen screen,
-            IGuiProperties guiProperties,
-            UserInput input,
-            IInternalKeyMappings keyBindings
-        ) {
+        public Optional<IInputInteraction> beginInput(Screen screen, UserInput input, IInternalKeyMappings keyBindings) {
             IngredientListFeatureSource source = getFeatureSource(owner);
-            if (source != null && CreativeTabBar.handleClick(source, getArea(owner), input)) {
-                return Optional.of(this);
-            }
-            return delegate.handleUserInput(screen, guiProperties, input, keyBindings);
+            Optional<InputAction> action = JeiInputActions.prepare(input,
+                event -> CreativeTabBar.handleClick(source, getArea(owner), event));
+            return action.isPresent() ? Optional.of(action.get()) : delegate.beginInput(screen, input, keyBindings);
         }
 
         @Override
-        public void unfocus() {
-            delegate.unfocus();
+        public void resetInput() {
+            delegate.resetInput();
         }
 
         @Override
-        public Optional<IUserInputHandler> handleMouseScrolled(
-            double mouseX,
-            double mouseY,
-            double scrollDeltaX,
-            double scrollDeltaY
-        ) {
+        public boolean scroll(double mouseX, double mouseY, double scrollDeltaX, double scrollDeltaY) {
             IngredientListFeatureSource source = getFeatureSource(owner);
-            if (source != null) {
-                Optional<IUserInputHandler> result = CreativeTabBar.handleScroll(
-                    source,
-                    getArea(owner),
-                    mouseX,
-                    mouseY,
-                    scrollDeltaY,
-                    this
-                );
-                if (result.isPresent()) {
-                    return result;
-                }
-            }
-            return delegate.handleMouseScrolled(mouseX, mouseY, scrollDeltaX, scrollDeltaY);
+            return (source != null && CreativeTabBar.handleScroll(source, getArea(owner), mouseX, mouseY, scrollDeltaY))
+                || delegate.scroll(mouseX, mouseY, scrollDeltaX, scrollDeltaY);
         }
     }
 }

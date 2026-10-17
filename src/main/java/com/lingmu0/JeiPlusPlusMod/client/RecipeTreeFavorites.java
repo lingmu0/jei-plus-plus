@@ -629,7 +629,7 @@ public final class RecipeTreeFavorites {
                 // and advances to the next physical row. Keeping it hidden
                 // prevents JEI's normal renderer from treating it as an item.
                 case "isVisible" -> false;
-                case "handleClick" -> false;
+                case "prepareAction" -> Optional.empty();
                 case "equals" -> proxy == (arguments == null ? null : arguments[0]);
                 case "hashCode" -> System.identityHashCode(proxy);
                 case "toString" -> "JEI++ recipe-tree row spacer";
@@ -901,7 +901,7 @@ public final class RecipeTreeFavorites {
                     show((IRecipesGui) args[0], (FocusUtil) args[1], (List<RecipeIngredientRole>) args[2]);
                     yield null;
                 }
-                case "handleClick" -> handleClick((UserInput) args[0]);
+                case "prepareAction" -> JeiInputActions.prepare((UserInput) args[0], this::handleClick);
                 case "getTooltip" -> {
                     getTooltip((JeiTooltip) args[0], args[1], args[2], args[3]);
                     yield null;

@@ -253,7 +253,7 @@ public final class IngredientListFeatures {
         public Object invoke(Object proxy, Method method, Object[] arguments) throws Throwable {
             Object[] args = arguments == null ? new Object[0] : arguments;
             return switch (method.getName()) {
-                case "handleClick" -> handleClick((UserInput) args[0]);
+                case "prepareAction" -> JeiInputActions.prepare((UserInput) args[0], this::handleClick);
                 case "show" -> {
                     source.jeiPlusPlus$toggleGroup(groupKey);
                     yield null;

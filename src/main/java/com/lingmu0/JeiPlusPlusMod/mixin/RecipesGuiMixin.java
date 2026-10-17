@@ -1,5 +1,8 @@
 package com.lingmu0.JeiPlusPlusMod.mixin;
 
+import com.lingmu0.JeiPlusPlusMod.client.RecipeCategoryInputTarget;
+import mezz.jei.common.input.handlers.InputGroup;
+import mezz.jei.gui.input.InputArea;
 import mezz.jei.gui.elements.IconButton;
 import mezz.jei.gui.recipes.IRecipeGuiLogic;
 import mezz.jei.gui.recipes.RecipesGui;
@@ -17,31 +20,12 @@ public abstract class RecipesGuiMixin {
     @Shadow @Final private IconButton nextRecipeCategory;
     @Shadow @Final private IconButton previousRecipeCategory;
 
-    @Inject(method = "mouseScrolled", at = @At("HEAD"), cancellable = true, remap = false)
-    private void jeiPlusPlus$scrollNavigation(
-        double mouseX,
-        double mouseY,
-        double scrollX,
-        double scrollY,
-        CallbackInfoReturnable<Boolean> cir
-    ) {
-        if (scrollY == 0 || !insideBand(mouseX, mouseY, previousRecipeCategory, nextRecipeCategory)) {
-            return;
-        }
-        if (scrollY < 0) {
-            logic.nextRecipeCategory();
-        } else {
-            logic.previousRecipeCategory();
-        }
-        cir.setReturnValue(true);
+    @Inject(method = "createInputArea", at = @At("RETURN"), cancellable = true, remap = false)
+    private void jeiPlusPlus$scrollNavigation(CallbackInfoReturnable<InputArea> cir) {
+        InputArea area = cir.getReturnValue();
+        cir.setReturnValue(new InputArea(area.name(), area.area(), area.blocksUnhandledMouseInput(),
+            new InputGroup("JeiPlusPlusRecipeNavigation",
+                new RecipeCategoryInputTarget(logic, previousRecipeCategory, nextRecipeCategory), area.controls()),
+            area.commands(), area.dragSources(), area.apiDragHandler()));
     }
-
-    private static boolean insideBand(double mouseX, double mouseY, IconButton left, IconButton right) {
-        int leftEdge = left.getX();
-        int rightEdge = right.getX() + right.getWidth();
-        int top = left.getY() - 2;
-        int bottom = left.getY() + left.getHeight() + 2;
-        return mouseX >= leftEdge && mouseX <= rightEdge && mouseY >= top && mouseY <= bottom;
-    }
-
 }

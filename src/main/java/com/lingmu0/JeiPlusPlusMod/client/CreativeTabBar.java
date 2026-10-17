@@ -2,7 +2,6 @@ package com.lingmu0.JeiPlusPlusMod.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import mezz.jei.common.util.ImmutableRect2i;
-import mezz.jei.common.input.IUserInputHandler;
 import mezz.jei.common.input.UserInput;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -209,28 +208,27 @@ public final class CreativeTabBar {
         return true;
     }
 
-    public static Optional<IUserInputHandler> handleScroll(
+    public static boolean handleScroll(
         IngredientListFeatureSource source,
         ImmutableRect2i area,
         double mouseX,
         double mouseY,
-        double scrollDeltaY,
-        IUserInputHandler self
+        double scrollDeltaY
     ) {
         if (source != null && source.jeiPlusPlus$isCreativeTabSelectorOpen()) {
             if (CreativeTabSelector.handleScroll(source, mouseX, mouseY, scrollDeltaY)) {
-                return Optional.of(self);
+                return true;
             }
         }
         if (!isEnabled(source) || scrollDeltaY == 0 || !area.contains(mouseX, mouseY)) {
-            return Optional.empty();
+            return false;
         }
         int capacity = getCapacity(area);
         int pageCount = getPageCount(source.jeiPlusPlus$getCreativeTabs().size() + 1, capacity);
         int page = clampPage(source.jeiPlusPlus$getCreativeTabPage(), pageCount);
         int next = scrollDeltaY < 0 ? page + 1 : page - 1;
         source.jeiPlusPlus$setCreativeTabPage(Math.floorMod(next, pageCount));
-        return Optional.of(self);
+        return true;
     }
 
     private static boolean isEnabled(IngredientListFeatureSource source) {
