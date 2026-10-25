@@ -62,7 +62,7 @@ dependencies {
     compileOnly "net.neoforged:neoforge:${neo_version}:universal"
 
     // The full JEI jar supplies the public API and the isolated client mixin targets.
-    compileOnly "mezz.jei:jei-26.1.2-neoforge:${jei_version}"
+    compileOnly "mezz.jei:jei-26.1.2-neoforge:${jei_compile_version}"
     localRuntime "mezz.jei:jei-26.1.2-neoforge:${jei_version}"
 }
 
@@ -91,3 +91,16 @@ tasks.withType(ProcessResources).configureEach {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
+tasks.register('testRecipeTreeMaterials', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath + configurations.localRuntime
+    mainClass = 'com.lingmu0.JeiPlusPlusMod.client.RecipeTreeOutputChoicesTest'
+}
+tasks.register('testJeiInputBridge', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath + configurations.localRuntime
+    mainClass = 'com.lingmu0.JeiPlusPlusMod.client.JeiInputBridgeTest'
+}
+tasks.named('check') { dependsOn 'testRecipeTreeMaterials', 'testJeiInputBridge' }
+apply from: 'gradle/verify-jei.gradle'
+tasks.named('test') { enabled = false }
