@@ -29,6 +29,13 @@ public final class JeiPlusPlusMixinConfigPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        boolean interactionInput = classExists("mezz.jei.common.input.IInputTarget");
+        if (mixinClassName.endsWith(".JeiRecipeTreeInputMixin")) return interactionInput;
+        if (mixinClassName.endsWith(".RecipesGuiMixin")) return !interactionInput;
+        if (mixinClassName.endsWith(".JeiInteractionTabsMixin") || mixinClassName.endsWith(".JeiBookmarkCommandsMixin")) return interactionInput;
+        if (mixinClassName.endsWith(".RecipeGuiTabsMixin")) return !interactionInput;
+        if (mixinClassName.endsWith(".BookmarkInputHandlerMixin")) return !interactionInput && classExists(targetClassName);
+        if (mixinClassName.endsWith(".GuiIconToggleButtonMixin")) return classExists(targetClassName);
         if (mixinClassName.endsWith(SERVICE_MIXIN)) {
             return lookupSignature() == LookupSignature.SERVICE;
         }

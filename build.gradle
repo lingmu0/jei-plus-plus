@@ -142,6 +142,25 @@ repositories {
     // }
 }
 
+// ForgeGradle resolves all fg.deobf originals together, so two versions of
+// the same module would evict the legacy compile jar. Remap it independently.
+configurations { jeiLegacyCompile { transitive = false } }
+def legacyJeiJar = layout.buildDirectory.file('jei-legacy-compile/jei-legacy.jar')
+def remapLegacyJei = tasks.register('remapLegacyJei') {
+    dependsOn 'createMcpToSrg'
+    inputs.files configurations.jeiLegacyCompile
+    inputs.property 'mappings', "official_${minecraft_version}"
+    outputs.file legacyJeiJar
+    doLast {
+        def remapper = new net.minecraftforge.gradle.userdev.util.Deobfuscator(project,
+            layout.buildDirectory.dir('jei-legacy-compile/cache').get().asFile)
+        def mapped = remapper.deobfBinary(configurations.jeiLegacyCompile.singleFile,
+            "official_${minecraft_version}", 'jei-legacy.jar')
+        assert mapped != null : 'Legacy JEI remapping failed'
+        copy { from mapped; into legacyJeiJar.get().asFile.parentFile; rename { 'jei-legacy.jar' } }
+    }
+}
+
 dependencies {
     // Specify the version of Minecraft to use.
     // Any artifact can be supplied so long as it has a "userdev" classifier artifact and is a compatible patcher artifact.
@@ -153,7 +172,8 @@ dependencies {
     // The addon uses JEI's public API plus a small, isolated client mixin
     // against the recipe GUI.  The full jar is compile-only so those mixin
     // targets are available, and runtime-only for the optional dev run.
-    compileOnly fg.deobf("mezz.jei:jei-1.20.1-forge:${jei_version}")
+    jeiLegacyCompile "mezz.jei:jei-1.20.1-forge:${jei_compile_version}"
+    compileOnly files(remapLegacyJei)
     runtimeOnly fg.deobf("mezz.jei:jei-1.20.1-forge:${jei_version}")
 
     // Example mod dependency using a mod jar from ./libs with a flat dir repository
@@ -207,3 +227,16 @@ tasks.named('jar', Jar).configure {
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
 }
+tasks.register('testRecipeTreeMaterials', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.lingmu0.JeiPlusPlusMod.client.RecipeTreeOutputChoicesTest'
+}
+tasks.register('testJeiInputBridge', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.lingmu0.JeiPlusPlusMod.client.JeiInputBridgeTest'
+}
+tasks.named('check') { dependsOn 'testRecipeTreeMaterials', 'testJeiInputBridge' }
+apply from: 'gradle/verify-jei.gradle'
+tasks.named('test') { enabled = false }

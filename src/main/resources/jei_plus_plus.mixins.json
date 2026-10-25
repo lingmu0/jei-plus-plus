@@ -7,9 +7,13 @@
   "plugin": "com.lingmu0.JeiPlusPlusMod.mixin.JeiPlusPlusMixinConfigPlugin",
   "mixins": [],
   "client": [
+    "JeiInteractionTabsMixin",
+    "JeiRecipeTreeInputMixin",
+    "JeiBookmarkCommandsMixin",
     "RecipeGuiLayoutsMixin",
     "RecipeSlotClickTargetFactoryMixin",
     "GuiIconToggleButtonMixin",
+    "JeiIconButtonMixin",
     "BasicRecipeTransferHandlerAccessor",
     "RecipesGuiMixin",
     "RecipeBookmarkElementMixin",
