@@ -2,14 +2,14 @@ package com.lingmu0.JeiPlusPlusMod.mixin;
 
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
 import com.lingmu0.JeiPlusPlusMod.client.DirectoryIngredientElement;
+import com.lingmu0.JeiPlusPlusMod.client.JeiReflectionCompat;
 import mezz.jei.api.gui.inputs.RecipeSlotUnderMouse;
 import mezz.jei.api.ingredients.ITypedIngredient;
-import mezz.jei.gui.input.ClickableIngredientInternal;
 import mezz.jei.gui.input.IClickableIngredientInternal;
-import mezz.jei.gui.input.IMouseOverable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -23,10 +23,19 @@ import java.util.Optional;
  * {@code getClickedIngredient}.
  */
 @Pseudo
-@Mixin(targets = "mezz.jei.gui.recipes.RecipeSlotClickTargetFactory", remap = false)
+@Mixin(
+    targets = {
+        "mezz.jei.gui.recipes.RecipeSlotClickTargetFactory",
+        "mezz.jei.common.input.RecipeSlotClickTargetFactory"
+    },
+    remap = false
+)
 public abstract class RecipeSlotClickTargetFactoryMixin {
     @Inject(
-        method = "create(Lmezz/jei/api/gui/inputs/RecipeSlotUnderMouse;Lmezz/jei/gui/input/IMouseOverable;)Ljava/util/Optional;",
+        method = {
+            "create(Lmezz/jei/api/gui/inputs/RecipeSlotUnderMouse;Lmezz/jei/gui/input/IMouseOverable;)Ljava/util/Optional;",
+            "create(Lmezz/jei/api/gui/inputs/RecipeSlotUnderMouse;Lmezz/jei/common/input/IMouseOverable;)Ljava/util/Optional;"
+        },
         at = @At("HEAD"),
         cancellable = true,
         remap = false,
@@ -34,7 +43,7 @@ public abstract class RecipeSlotClickTargetFactoryMixin {
     )
     private void jeiPlusPlus$directoryClick(
         RecipeSlotUnderMouse slotUnderMouse,
-        IMouseOverable mouseOverable,
+        @Coerce Object mouseOverable,
         CallbackInfoReturnable<Optional<IClickableIngredientInternal<?>>> cir
     ) {
         if (!JeiPlusPlusConfig.RECIPE_INGREDIENT_DIRECTORY_ENABLED.get()) {
@@ -46,9 +55,9 @@ public abstract class RecipeSlotClickTargetFactoryMixin {
         }
 
         slotUnderMouse.slot().getDisplayedIngredient().ifPresent(displayed -> {
-            cir.setReturnValue(Optional.of(new ClickableIngredientInternal<>(
+            cir.setReturnValue(Optional.of(JeiReflectionCompat.clickableIngredient(
                 new DirectoryIngredientElement(displayed, ingredients),
-                mouseOverable,
+                JeiReflectionCompat.mouseOverPredicate(mouseOverable),
                 false,
                 true
             )));

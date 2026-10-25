@@ -1,0 +1,97 @@
+import org.objectweb.asm.*
+import org.objectweb.asm.tree.*
+import java.util.zip.ZipFile
+buildscript {
+    repositories { mavenCentral() }
+    dependencies { classpath 'org.ow2.asm:asm-tree:9.9.1' }
+}
+tasks.register('verifyJeiCompatibility') {
+    dependsOn 'classes'
+    doLast {
+        def parse = { bytes -> def n = new ClassNode(); new ClassReader(bytes).accept(n,6); n }
+        def av = { a -> def m=[:]; if(a?.values) for(int i=0;i<a.values.size();i+=2) m[a.values[i]]=a.values[i+1]; m }
+        def models=[:]
+        (configurations.runtimeClasspath.files + configurations.localRuntime.files).findAll { it.name.startsWith('jei-') && it.name.contains(project.jei_version) && it.name.endsWith('.jar') }.each { f ->
+            new ZipFile(f).withCloseable { z -> z.entries().findAll { it.name.startsWith('mezz/jei/') && it.name.endsWith('.class') }.each { e ->
+                models[e.name-'.class']=parse(z.getInputStream(e).bytes)
+            } }
+        }
+        assert models : "No runtime JEI model for ${project.jei_version}"
+        boolean modern=models.containsKey('mezz/jei/common/input/IInputTarget'), service=models.containsKey('mezz/jei/common/transfer/RecipeTransferService')
+        int checks=0
+        sourceSets.main.output.classesDirs.files.each { d -> fileTree(d).matching { include '**/mixin/*.class' }.files.each { f ->
+            def n=parse(f.bytes), simple=n.name.tokenize('/').last()
+            if(simple=='RecipeGuiTabsMixin' && modern || simple=='BookmarkInputHandlerMixin' && modern) return
+            if(simple=='RecipesGuiMixin' && modern) return
+            if(simple in ['JeiInteractionTabsMixin','JeiBookmarkCommandsMixin','JeiRecipeTreeInputMixin'] && !modern) return
+            if(simple=='IngredientLookupStateLegacyMixin' && service || simple=='IngredientLookupStateServiceMixin' && !service) return
+            def anns=(n.visibleAnnotations?:[])+(n.invisibleAnnotations?:[])
+            def declaration=av(anns.find { it.desc=='Lorg/spongepowered/asm/mixin/Mixin;' })
+            def names=(declaration.value?:[]).collect { ((Type)it).internalName }+(declaration.targets?:[]).collect { it.replace('.','/') }
+            names.findAll { it.startsWith('mezz/jei/') && models.containsKey(it) }.each { name ->
+                def target=models[name]
+                n.fields.each { field ->
+                    def aa=(field.visibleAnnotations?:[])+(field.invisibleAnnotations?:[])
+                    if(aa.any { it.desc=='Lorg/spongepowered/asm/mixin/Shadow;' }) {
+                        assert target.fields.any { it.name==field.name && it.desc==field.desc } : "JEI ${project.jei_version}: invalid shadow ${name}.${field.name}"
+                        checks++
+                    }
+                }
+                n.methods.each { m ->
+                    def aa=(m.visibleAnnotations?:[])+(m.invisibleAnnotations?:[])
+                    def accessor=aa.find { it.desc=='Lorg/spongepowered/asm/mixin/gen/Accessor;' }
+                    if(accessor) {
+                        def field=av(accessor).value
+                        assert target.fields.any { it.name==field && it.desc==Type.getReturnType(m.desc).descriptor } : "JEI ${project.jei_version}: invalid accessor ${name}.${field}"
+                        checks++
+                    }
+                    aa.findAll { it.desc=='Lorg/spongepowered/asm/mixin/injection/Inject;' }.each { injection ->
+                        def v=av(injection)
+                        def matches=target.methods.findAll { t -> v.method.any { s ->
+                            int p=s.indexOf('('); (p<0?s:s.substring(0,p))==t.name && (p<0 || s.substring(p)==t.desc)
+                        } }
+                        if(!matches && v.require==0) return
+                        assert matches : "JEI ${project.jei_version}: invalid injection ${n.name} -> ${name} ${v.method}"
+                        def args=Type.getArgumentTypes(m.desc)
+                        int ci=args.findIndexOf { it.className.startsWith('org.spongepowered.asm.mixin.injection.callback.') }
+                        assert ci>=0
+                        if(ci>0) assert matches.any { t ->
+                            def expected=Type.getArgumentTypes(t.desc)
+                            expected.length==ci && (0..<ci).every { i -> args[i]==expected[i] || args[i].className=='java.lang.Object' }
+                        } : "JEI ${project.jei_version}: invalid callback ${n.name}.${m.name}${m.desc}"
+                        checks++
+                    }
+                }
+            }
+        } }
+        // Compilation uses the stable baseline. Also catch direct calls that
+        // would otherwise fail only when the latest JEI loads the feature.
+        def memberExists
+        memberExists = { owner, name, desc, field ->
+            def type = models[owner]
+            if (!type) return owner == 'java/lang/Object' && !field && name in ['equals','hashCode','toString','getClass']
+            if ((field ? type.fields : type.methods).any { it.name == name && it.desc == desc }) return true
+            if (name == '<init>') return false
+            return ([type.superName] + type.interfaces).findAll { it != null }.any { memberExists(it, name, desc, field) }
+        }
+        sourceSets.main.output.classesDirs.files.each { d ->
+            fileTree(d).matching { include '**/*.class'; exclude '**/mixin/**' }.files.each { f ->
+                def n = parse(f.bytes)
+                n.methods.each { m -> m.instructions.each { instruction ->
+                    if (instruction instanceof MethodInsnNode || instruction instanceof FieldInsnNode) {
+                        def owner = instruction.owner
+                        if (owner.startsWith('mezz/jei/')) {
+                            assert models.containsKey(owner) : "JEI ${project.jei_version}: missing class ${owner} used by ${n.name}"
+                            assert memberExists(owner, instruction.name, instruction.desc, instruction instanceof FieldInsnNode) :
+                                "JEI ${project.jei_version}: missing member ${owner}.${instruction.name}${instruction.desc} used by ${n.name}.${m.name}"
+                            checks++
+                        }
+                    }
+                } }
+            }
+        }
+        assert checks>0
+        logger.lifecycle("JEI ${project.jei_version}: ${checks} active injection, field and callback checks passed; modern input=${modern}")
+    }
+}
+tasks.named('check') { dependsOn 'verifyJeiCompatibility' }

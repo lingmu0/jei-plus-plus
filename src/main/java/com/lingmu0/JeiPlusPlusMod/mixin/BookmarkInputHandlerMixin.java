@@ -1,6 +1,7 @@
 package com.lingmu0.JeiPlusPlusMod.mixin;
 
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
+import com.lingmu0.JeiPlusPlusMod.client.JeiReflectionCompat;
 import mezz.jei.api.gui.IRecipeLayoutDrawable;
 import mezz.jei.api.gui.inputs.RecipeSlotUnderMouse;
 import mezz.jei.api.ingredients.ITypedIngredient;
@@ -11,10 +12,7 @@ import mezz.jei.common.input.IInternalKeyMappings;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.bookmarks.RecipeBookmark;
-import mezz.jei.gui.input.IUserInputHandler;
-import mezz.jei.gui.input.UserInput;
-import mezz.jei.gui.input.handlers.BookmarkInputHandler;
-import mezz.jei.gui.input.handlers.SameElementInputHandler;
+import org.spongepowered.asm.mixin.Pseudo;
 import mezz.jei.gui.recipes.IRecipeLayoutWithButtons;
 import mezz.jei.gui.recipes.RecipeGuiLayouts;
 import mezz.jei.gui.recipes.RecipesGui;
@@ -24,6 +22,7 @@ import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -34,7 +33,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 /** Uses the preferred recipe only for output-slot bookmarks. */
-@Mixin(value = BookmarkInputHandler.class, remap = false)
+@Pseudo
+@Mixin(targets = "mezz.jei.gui.input.handlers.BookmarkInputHandler", remap = false)
 public abstract class BookmarkInputHandlerMixin {
     @Shadow @Final private BookmarkList bookmarkList;
 
@@ -53,8 +53,8 @@ public abstract class BookmarkInputHandlerMixin {
         remap = false
     )
     private void jeiPlusPlus$gateRecipeBookmark(
-        UserInput input,
-        CallbackInfoReturnable<java.util.Optional<IUserInputHandler>> cir
+        @Coerce Object input,
+        CallbackInfoReturnable<java.util.Optional<Object>> cir
     ) {
         if (JeiPlusPlusConfig.PREFER_RECIPE_BOOKMARK_ON_OUTPUT.get()
             && !isJeiBookmarkedRecipeSortingEnabled()) {
@@ -70,9 +70,9 @@ public abstract class BookmarkInputHandlerMixin {
         remap = false
     )
     private void jeiPlusPlus$preferRecipeBookmark(
-        UserInput input,
+        @Coerce Object input,
         IInternalKeyMappings keyBindings,
-        CallbackInfoReturnable<java.util.Optional<IUserInputHandler>> cir
+        CallbackInfoReturnable<java.util.Optional<Object>> cir
     ) {
         IJeiRuntime runtime = Internal.getJeiRuntime();
         if (!(runtime.getRecipesGui() instanceof RecipesGui recipesGui)
@@ -86,7 +86,10 @@ public abstract class BookmarkInputHandlerMixin {
         for (IRecipeLayoutWithButtons<?> layoutWithButtons :
             ((RecipeGuiLayoutsAccessor) (Object) layouts).jeiPlusPlus$getRecipeLayoutsWithButtons()) {
             IRecipeLayoutDrawable<?> layout = layoutWithButtons.getRecipeLayout();
-            java.util.Optional<RecipeSlotUnderMouse> under = layout.getSlotUnderMouse(input.getMouseX(), input.getMouseY());
+            java.util.Optional<RecipeSlotUnderMouse> under = layout.getSlotUnderMouse(
+                JeiReflectionCompat.inputMouseX(input),
+                JeiReflectionCompat.inputMouseY(input)
+            );
             if (under.isEmpty() || under.get().slot().isEmpty()) {
                 continue;
             }
@@ -99,7 +102,7 @@ public abstract class BookmarkInputHandlerMixin {
             if (output.isEmpty()) {
                 continue;
             }
-            if (!input.isSimulate()) {
+            if (!JeiReflectionCompat.isInputSimulated(input)) {
                 if (JeiPlusPlusConfig.PREFER_RECIPE_BOOKMARK_ON_OUTPUT.get()
                     && isJeiBookmarkedRecipeSortingEnabled()) {
                     RecipeBookmark<?, ?> bookmark = createBookmarkForHoveredOutput(layout, output, runtime);
@@ -114,8 +117,10 @@ public abstract class BookmarkInputHandlerMixin {
                         runtime.getIngredientManager().normalizeTypedIngredient(output.get()));
                 }
             }
-            IUserInputHandler currentHandler = (IUserInputHandler) (Object) this;
-            cir.setReturnValue(java.util.Optional.of(new SameElementInputHandler(currentHandler, layout::isMouseOver)));
+            Object currentHandler = this;
+            cir.setReturnValue(java.util.Optional.of(
+                JeiReflectionCompat.sameElementInputHandler(currentHandler, layout::isMouseOver)
+            ));
             return;
         }
     }
@@ -281,7 +286,7 @@ public abstract class BookmarkInputHandlerMixin {
      */
     private static boolean isJeiBookmarkedRecipeSortingEnabled() {
         try {
-            Object config = Internal.getJeiClientConfigs().getClientConfig();
+            Object config = invokeNoArg(JeiReflectionCompat.clientConfigs(), "getClientConfig");
             Object stages;
             try {
                 // JEI 15.x exposes getRecipeSorterStages() directly.
