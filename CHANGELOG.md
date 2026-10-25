@@ -1,5 +1,23 @@
 # 更新日志 / Changelog
 
+## 1.0.8 — 2026-10-25
+
+### 中文
+
+- 额外适配 JEI 15.74.0.229（1.20.1）、19.70.0.458（1.21.1）与 29.47.0.111（26.1.2）的新版输入交互、分类导航和书签接口，保留旧版接口分支。
+- 修复多级配方将同一输出槽的互斥候选当作同时产出，导致其他分支复用不存在的副产物而少算材料的问题；真正的多输出槽仍保留副产物。
+- 快照使用无焦点的标准布局，并区分不同配方对象，避免界面打开顺序影响缓存内容。
+- 修复旧节点需求数量残留和库存统计读取已扣除工作副本的问题；暂停界面内的库存刷新不再依赖游戏时间推进。
+- 新增无图形界面的材料计算、JEI 输入桥和注入目标/直接调用兼容性检查。不将构建检查等同于游戏内整合包验证。
+
+### English
+
+- Added compatibility with JEI 15.74.0.229 (1.20.1), 19.70.0.458 (1.21.1), and 29.47.0.111 (26.1.2), including the new input interaction, category navigation, and bookmark paths, while retaining legacy API branches.
+- Fixed nested recipes treating mutually exclusive alternatives in one output slot as simultaneous products, which could undercount materials in sibling branches. Genuine separate output slots still contribute byproducts.
+- Cache canonical, unfocused recipe layouts and distinguish recipe objects so opening order does not contaminate snapshots.
+- Clear stale node demand, retain the original inventory for stock totals, and refresh inventory in paused interfaces without relying on world ticks.
+- Added headless material-planning, JEI input bridge, injection-target, and direct-call compatibility checks. Build checks are not an in-game modpack test.
+
 ## 1.0.7-26.1.2-fabric — 2026-10-11
 
 ### 中文

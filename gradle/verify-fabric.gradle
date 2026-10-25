@@ -62,7 +62,7 @@ tasks.register('verifyFabricJar') {
             node
         }
         def targets = [:]
-        configurations.compileClasspath.files.findAll { it.name.endsWith('.jar') }.each { file ->
+        configurations.runtimeClasspath.files.findAll { it.name.endsWith('.jar') }.each { file ->
             new ZipFile(file).withCloseable { archive ->
                 archive.entries().findAll { it.name.startsWith('mezz/jei/') && it.name.endsWith('.class') }.each { entry ->
                     targets[entry.name - '.class'] = readClass(archive.getInputStream(entry).bytes)
@@ -83,6 +83,10 @@ tasks.register('verifyFabricJar') {
                 def declaration = annotationValues(annotations.find { it.desc == 'Lorg/spongepowered/asm/mixin/Mixin;' })
                 def names = (declaration.value ?: []).collect { ((Type) it).internalName } + (declaration.targets ?: []).collect { it.replace('.', '/') }
                 names.findAll { it.startsWith('mezz/jei/') && targets.containsKey(it) }.each { name ->
+                    boolean modern = targets.containsKey('mezz/jei/common/input/IInputTarget')
+                    if (mixin.name.endsWith('/RecipeGuiTabsMixin') && modern) return
+                    if (mixin.name.endsWith('/RecipesGuiMixin') && modern) return
+                    if ((mixin.name.endsWith('/JeiInteractionTabsMixin') || mixin.name.endsWith('/JeiBookmarkCommandsMixin')) && !modern) return
                     def target = targets[name]
                     mixin.methods.each { method ->
                         def methodAnnotations = (method.visibleAnnotations ?: []) + (method.invisibleAnnotations ?: [])

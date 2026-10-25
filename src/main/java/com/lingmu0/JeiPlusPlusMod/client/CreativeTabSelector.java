@@ -2,7 +2,6 @@ package com.lingmu0.JeiPlusPlusMod.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import mezz.jei.common.util.ImmutableRect2i;
-import mezz.jei.common.input.UserInput;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -144,37 +143,37 @@ public final class CreativeTabSelector {
     public static boolean handleClick(
         IngredientListFeatureSource source,
         ImmutableRect2i tabBarArea,
-        UserInput input
+        Object input
     ) {
-        if (input.getKey().getType() == InputConstants.Type.KEYSYM) {
-            if (input.getKey().getValue() == InputConstants.KEY_ESCAPE && !input.isSimulate()) {
+        if (JeiReflectionCompat.inputKey(input).getType() == InputConstants.Type.KEYSYM) {
+            if (JeiReflectionCompat.inputKey(input).getValue() == InputConstants.KEY_ESCAPE && !JeiReflectionCompat.isInputSimulated(input)) {
                 source.jeiPlusPlus$setCreativeTabSelectorOpen(false);
             }
             return true;
         }
-        if (input.getKey().getType() != InputConstants.Type.MOUSE) {
+        if (JeiReflectionCompat.inputKey(input).getType() != InputConstants.Type.MOUSE) {
             return true;
         }
 
         Layout layout = getLayout();
-        double mouseX = input.getMouseX();
-        double mouseY = input.getMouseY();
-        int button = input.getKey().getValue();
+        double mouseX = JeiReflectionCompat.inputMouseX(input);
+        double mouseY = JeiReflectionCompat.inputMouseY(input);
+        int button = JeiReflectionCompat.inputKey(input).getValue();
         if (button == 0 && isCloseButton(layout, mouseX, mouseY)) {
-            if (!input.isSimulate()) {
+            if (!JeiReflectionCompat.isInputSimulated(input)) {
                 source.jeiPlusPlus$setCreativeTabSelectorOpen(false);
             }
             return true;
         }
 
         if (button == 0 && isPageButton(layout, mouseX, mouseY, true)) {
-            if (!input.isSimulate()) {
+            if (!JeiReflectionCompat.isInputSimulated(input)) {
                 setPage(source, layout, source.jeiPlusPlus$getCreativeTabSelectorPage() - 1);
             }
             return true;
         }
         if (button == 0 && isPageButton(layout, mouseX, mouseY, false)) {
-            if (!input.isSimulate()) {
+            if (!JeiReflectionCompat.isInputSimulated(input)) {
                 setPage(source, layout, source.jeiPlusPlus$getCreativeTabSelectorPage() + 1);
             }
             return true;
@@ -182,7 +181,7 @@ public final class CreativeTabSelector {
 
         int index = getEntryAt(source, layout, mouseX, mouseY);
         if (index >= 0) {
-            if (!input.isSimulate()) {
+            if (!JeiReflectionCompat.isInputSimulated(input)) {
                 if (button == 0) {
                     int capacity = CreativeTabBar.getCapacity(tabBarArea);
                     int pageCount = getPageCount(source.jeiPlusPlus$getCreativeTabs().size() + 1, capacity);
@@ -197,7 +196,7 @@ public final class CreativeTabSelector {
         }
 
         if (!contains(mouseX, mouseY, layout.x(), layout.y(), layout.width(), layout.height())) {
-            if (!input.isSimulate()) {
+            if (!JeiReflectionCompat.isInputSimulated(input)) {
                 source.jeiPlusPlus$setCreativeTabSelectorOpen(false);
             }
         }

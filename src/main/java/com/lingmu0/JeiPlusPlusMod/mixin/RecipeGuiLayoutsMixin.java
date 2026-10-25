@@ -6,7 +6,6 @@ import com.lingmu0.JeiPlusPlusMod.client.DirectoryIngredientElement;
 import mezz.jei.api.gui.inputs.RecipeSlotUnderMouse;
 import mezz.jei.api.ingredients.ITypedIngredient;
 import mezz.jei.gui.input.IClickableIngredientInternal;
-import mezz.jei.gui.input.ClickableIngredientInternal;
 import mezz.jei.gui.recipes.RecipeGuiLayouts;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import org.spongepowered.asm.mixin.Mixin;
@@ -53,7 +52,7 @@ public abstract class RecipeGuiLayoutsMixin {
         }
 
         slotUnderMouse.slot().getDisplayedIngredient().ifPresent(displayed -> {
-            cir.setReturnValue(Optional.of(new ClickableIngredientInternal<>(
+            cir.setReturnValue(Optional.of(com.lingmu0.JeiPlusPlusMod.client.JeiReflectionCompat.clickableIngredient(
                 new DirectoryIngredientElement(displayed, ingredients),
                 slotUnderMouse::isMouseOver,
                 false,

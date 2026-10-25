@@ -6,6 +6,8 @@
   "plugin": "com.lingmu0.JeiPlusPlusMod.mixin.JeiPlusPlusMixinConfigPlugin",
   "mixins": [],
   "client": [
+    "JeiInteractionTabsMixin",
+    "JeiBookmarkCommandsMixin",
     "ContainerScreenAccessor",
     "RecipeGuiLayoutsMixin",
     "RecipeSlotClickTargetFactoryMixin",

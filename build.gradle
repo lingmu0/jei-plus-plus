@@ -1,5 +1,5 @@
 plugins {
-    id 'net.fabricmc.fabric-loom' version '1.16.3'
+    id 'net.fabricmc.fabric-loom' version '1.18.4'
     id 'maven-publish'
 }
 
@@ -15,7 +15,7 @@ dependencies {
     minecraft "com.mojang:minecraft:${minecraft_version}"
     implementation "net.fabricmc:fabric-loader:${loader_version}"
     implementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
-    compileOnly "mezz.jei:jei-${minecraft_version}-fabric:${jei_version}"
+    compileOnly "mezz.jei:jei-${minecraft_version}-fabric:${jei_compile_version}"
     runtimeOnly "mezz.jei:jei-${minecraft_version}-fabric:${jei_version}"
 }
 
@@ -44,3 +44,15 @@ tasks.register('testFabricConfig', JavaExec) {
 // Regression checks are an ordinary Java process and do not bootstrap Minecraft.
 tasks.named('test') { enabled = false }
 apply from: 'gradle/verify-fabric.gradle'
+tasks.register('testRecipeTreeMaterials', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.lingmu0.JeiPlusPlusMod.client.RecipeTreeOutputChoicesTest'
+}
+tasks.register('testJeiInputBridge', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.lingmu0.JeiPlusPlusMod.client.JeiInputBridgeTest'
+}
+tasks.named('check') { dependsOn 'testRecipeTreeMaterials', 'testJeiInputBridge' }
+apply from: 'gradle/verify-jei.gradle'
