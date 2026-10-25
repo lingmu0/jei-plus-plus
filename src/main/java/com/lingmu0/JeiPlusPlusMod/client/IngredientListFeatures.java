@@ -9,7 +9,6 @@ import mezz.jei.api.gui.drawable.IDrawable;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.runtime.IRecipesGui;
 import mezz.jei.common.input.IInternalKeyMappings;
-import mezz.jei.gui.input.UserInput;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -235,13 +234,14 @@ public final class IngredientListFeatures {
             this.delegate = elements.get(0);
         }
 
-        private boolean handleClick(UserInput input) {
-            if (input.getKey().getType() == InputConstants.Type.MOUSE && input.getKey().getValue() == 0) {
+        private boolean handleClick(Object input) {
+            InputConstants.Key key = JeiReflectionCompat.inputKey(input);
+            if (key.getType() == InputConstants.Type.MOUSE && key.getValue() == 0) {
                 // In cheat mode, JEI owns the click. R/U still opens the group.
                 if (isCheatModeEnabled()) {
                     return false;
                 }
-                if (!input.isSimulate()) {
+                if (!JeiReflectionCompat.isInputSimulated(input)) {
                     source.jeiPlusPlus$toggleGroup(groupKey);
                 }
                 return true;
@@ -253,7 +253,8 @@ public final class IngredientListFeatures {
         public Object invoke(Object proxy, Method method, Object[] arguments) throws Throwable {
             Object[] args = arguments == null ? new Object[0] : arguments;
             return switch (method.getName()) {
-                case "handleClick" -> handleClick((UserInput) args[0]);
+                case "prepareAction" -> JeiReflectionCompat.prepareAction(args[0], this::handleClick);
+                case "handleClick" -> handleClick(args[0]);
                 case "show" -> {
                     source.jeiPlusPlus$toggleGroup(groupKey);
                     yield null;
