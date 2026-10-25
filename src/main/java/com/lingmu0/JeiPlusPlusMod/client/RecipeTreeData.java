@@ -49,8 +49,8 @@ public final class RecipeTreeData {
 
     private static final Map<String, List<RecipeRef>> CANDIDATE_CACHE = new HashMap<>();
     private static final Map<String, List<RecipeSnapshot>> SNAPSHOT_CACHE = new HashMap<>();
-    private static final Map<String, RecipeSnapshot> RECIPE_SNAPSHOT_CACHE = new HashMap<>();
-    private static final Map<String, IRecipeLayoutDrawable<?>> LAYOUT_CACHE = new HashMap<>();
+    private static final Map<RecipeRef, RecipeSnapshot> RECIPE_SNAPSHOT_CACHE = new HashMap<>();
+    private static final Map<RecipeRef, IRecipeLayoutDrawable<?>> LAYOUT_CACHE = new HashMap<>();
     private static CandidateContext cachedCandidateContext;
     private static Object cachedCandidateMenu;
     private static long cachedCandidateGameTime = Long.MIN_VALUE;
@@ -102,20 +102,19 @@ public final class RecipeTreeData {
         RecipeRef ref,
         List<RecipeInput> inputs,
         int inputSlotCount,
-        List<ItemStack> outputs
+        List<ItemStack> outputs,
+        List<List<ItemStack>> outputSlots
     ) {
+        public List<ItemStack> outputsFor(String wanted) {
+            return RecipeTreeOutputChoices.select(outputSlots, wanted, RecipeTreeData::ingredientKey);
+        }
+
         public boolean canExpand() {
             return !inputs.isEmpty();
         }
 
         public long outputAmount(String ingredientKey) {
-            long amount = 0;
-            for (ItemStack output : outputs) {
-                if (ingredientKey(output).equals(ingredientKey)) {
-                    amount += output.getCount();
-                }
-            }
-            return Math.max(1, amount);
+            return RecipeTreeOutputChoices.amount(outputSlots, ingredientKey, RecipeTreeData::ingredientKey, ItemStack::getCount);
         }
 
         public boolean produces(String ingredientKey) {
@@ -286,6 +285,7 @@ public final class RecipeTreeData {
         private Analysis cachedAnalysis;
         private List<CraftStep> cachedCraftingSteps;
         private long cachedAnalysisTick = Long.MIN_VALUE;
+        private Object cachedAnalysisMenu;
         private long cachedAnalysisStorageRevision = Long.MIN_VALUE;
         private int analysisRevision;
         private int cachedAnalysisRevision = -1;
@@ -393,9 +393,11 @@ public final class RecipeTreeData {
 
         public Analysis analyze() {
             long gameTime = analysisGameTime();
+            Object menu = Ae2StorageIntegration.activeMenu();
             long storageRevision = StorageNetworkIntegration.snapshotRevision();
             if (cachedAnalysis != null
                 && cachedAnalysisRevision == analysisRevision
+                && cachedAnalysisMenu == menu
                 && cachedAnalysisTick == gameTime
                 && cachedAnalysisStorageRevision == storageRevision) {
                 return cachedAnalysis;
@@ -403,6 +405,7 @@ public final class RecipeTreeData {
             Map<String, MutableCost> totalCosts = new LinkedHashMap<>();
             Map<String, MutableCost> totalRemainders = new LinkedHashMap<>();
             resetProgress(root);
+            resetAmounts(root);
             calculatePlan(root, safeMultiply(rootStack.getCount(), batches), totalCosts, totalRemainders);
 
             Map<String, MutableCost> missingCosts = new LinkedHashMap<>();
@@ -412,7 +415,7 @@ public final class RecipeTreeData {
                 // calculateProgress mutates its working map, so the cached
                 // snapshot returns a private copy for this pass.
                 inventory = inventorySnapshot();
-                calculateProgress(root, safeMultiply(rootStack.getCount(), batches), inventory, missingCosts);
+                calculateProgress(root, safeMultiply(rootStack.getCount(), batches), copyInventory(inventory), missingCosts);
             }
 
             List<Cost> costs = new ArrayList<>();
@@ -434,6 +437,7 @@ public final class RecipeTreeData {
             cachedAnalysis = new Analysis(List.copyOf(costs), leftovers);
             cachedAnalysisRevision = analysisRevision;
             cachedAnalysisTick = gameTime;
+            cachedAnalysisMenu = menu;
             cachedAnalysisStorageRevision = storageRevision;
             cachedCraftingSteps = null;
             return cachedAnalysis;
@@ -512,7 +516,7 @@ public final class RecipeTreeData {
 
         private static long analysisGameTime() {
             var level = net.minecraft.client.Minecraft.getInstance().level;
-            return level == null ? Long.MIN_VALUE : level.getGameTime();
+            return level == null ? Long.MIN_VALUE : System.nanoTime() / 50_000_000L;
         }
 
         private void forceTargetProgress(Node target) {
@@ -694,7 +698,7 @@ public final class RecipeTreeData {
 
             long surplus = safeMultiply(crafts, outputAmount) - remaining;
             add(remainders, node.stack, surplus);
-            for (ItemStack output : recipe.outputs) {
+            for (ItemStack output : recipe.outputsFor(node.ingredientKey)) {
                 if (!ingredientKey(output).equals(node.ingredientKey)) {
                     add(remainders, output, safeMultiply(output.getCount(), crafts));
                 }
@@ -730,13 +734,12 @@ public final class RecipeTreeData {
             if (node.progress == Progress.UNSTARTED && childProgress) {
                 node.progress = Progress.PARTIAL;
             }
-            for (ItemStack output : recipe.outputs) {
+            for (ItemStack output : recipe.outputsFor(node.ingredientKey)) {
                 long produced = safeMultiply(output.getCount(), crafts);
-                if (ingredientKey(output).equals(node.ingredientKey)) {
-                    produced -= remaining;
-                }
                 addSupply(available, output, produced);
             }
+            // Consume the requested product once, not once per matching output slot.
+            consume(available, node.ingredientKey, mapAmount(node.stack, remaining));
         }
 
         private void collectCraftSteps(Node node, Map<String, MutableCraftStep> steps, boolean missingOnly) {
@@ -1005,21 +1008,22 @@ public final class RecipeTreeData {
             return Optional.empty();
         }
         RecipeRef ref = ref(layout.getRecipeCategory(), layout.getRecipe());
-        RecipeSnapshot cached = RECIPE_SNAPSHOT_CACHE.get(ref.key());
+        RecipeSnapshot cached = RECIPE_SNAPSHOT_CACHE.get(ref);
         if (cached != null) {
             return Optional.of(cached);
         }
         if (firstOutput(layout).isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(snapshot(ref, layout));
+        // Only cache the unfocused layout; visible recipe pages may filter custom ingredients.
+        return createLayout(ref).map(canonical -> snapshot(ref, canonical));
     }
 
     public static RecipeSnapshot snapshot(RecipeRef ref) {
         if (ref == null) {
             return null;
         }
-        RecipeSnapshot cached = RECIPE_SNAPSHOT_CACHE.get(ref.key());
+        RecipeSnapshot cached = RECIPE_SNAPSHOT_CACHE.get(ref);
         if (cached != null) {
             return cached;
         }
@@ -1034,7 +1038,7 @@ public final class RecipeTreeData {
         if (runtime == null || ref == null || !isSupportedCategory(ref.category())) {
             return Optional.empty();
         }
-        IRecipeLayoutDrawable<?> cached = LAYOUT_CACHE.get(ref.key());
+        IRecipeLayoutDrawable<?> cached = LAYOUT_CACHE.get(ref);
         if (cached != null) {
             return Optional.of(cached);
         }
@@ -1044,7 +1048,7 @@ public final class RecipeTreeData {
             ref.recipe(),
             emptyFocus
         );
-        layout.ifPresent(value -> LAYOUT_CACHE.put(ref.key(), value));
+        layout.ifPresent(value -> LAYOUT_CACHE.put(ref, value));
         return (Optional) layout;
     }
 
@@ -1181,12 +1185,13 @@ public final class RecipeTreeData {
     }
 
     private static RecipeSnapshot snapshot(RecipeRef ref, IRecipeLayoutDrawable<?> layout) {
-        RecipeSnapshot cached = RECIPE_SNAPSHOT_CACHE.get(ref.key());
+        RecipeSnapshot cached = RECIPE_SNAPSHOT_CACHE.get(ref);
         if (cached != null) {
             return cached;
         }
         Map<String, MutableRecipeInput> groupedInputs = new LinkedHashMap<>();
         Map<String, ItemStack> outputs = new LinkedHashMap<>();
+        List<List<ItemStack>> outputSlots = new ArrayList<>();
         int inputSlotCount = 0;
         for (IRecipeSlotView slot : layout.getRecipeSlotsView().getSlotViews()) {
             RecipeIngredientRole role = slot.getRole();
@@ -1202,6 +1207,7 @@ public final class RecipeTreeData {
             if (role == RecipeIngredientRole.INPUT) {
                 addRecipeInput(groupedInputs, alternatives, inputSlotIndex);
             } else {
+                outputSlots.add(List.copyOf(alternatives));
                 for (ItemStack alternative : alternatives) {
                     merge(outputs, alternative);
                 }
@@ -1219,8 +1225,8 @@ public final class RecipeTreeData {
         List<RecipeInput> inputs = groupedInputs.values().stream()
             .map(MutableRecipeInput::freeze)
             .toList();
-        RecipeSnapshot snapshot = new RecipeSnapshot(ref, inputs, inputSlotCount, List.copyOf(outputs.values()));
-        RECIPE_SNAPSHOT_CACHE.put(ref.key(), snapshot);
+        RecipeSnapshot snapshot = new RecipeSnapshot(ref, inputs, inputSlotCount, List.copyOf(outputs.values()), List.copyOf(outputSlots));
+        RECIPE_SNAPSHOT_CACHE.put(ref, snapshot);
         return snapshot;
     }
 
@@ -1399,7 +1405,7 @@ public final class RecipeTreeData {
     private static Map<String, MutableCost> inventorySnapshot() {
         var minecraft = net.minecraft.client.Minecraft.getInstance();
         Object menu = Ae2StorageIntegration.activeMenu();
-        long gameTime = minecraft.level == null ? -1L : minecraft.level.getGameTime();
+        long gameTime = Tree.analysisGameTime();
         long storageRevision = StorageNetworkIntegration.snapshotRevision();
         if (menu == cachedInventoryMenu
             && gameTime == cachedInventoryGameTime
@@ -1493,7 +1499,7 @@ public final class RecipeTreeData {
     private static CandidateContext candidateContext() {
         Object menu = Ae2StorageIntegration.activeMenu();
         var level = net.minecraft.client.Minecraft.getInstance().level;
-        long gameTime = level == null ? -1L : level.getGameTime();
+        long gameTime = Tree.analysisGameTime();
         long storageRevision = StorageNetworkIntegration.snapshotRevision();
         if (cachedCandidateContext != null
             && cachedCandidateMenu == menu
@@ -1696,7 +1702,7 @@ public final class RecipeTreeData {
                 continue;
             }
 
-            for (ItemStack output : recipe.outputs()) {
+            for (ItemStack output : recipe.outputsFor(key)) {
                 addAvailable(branch, output, safeMultiply(output.getCount(), crafts));
             }
             if (availableAmount(branch, key) < missing) {
@@ -1722,12 +1728,8 @@ public final class RecipeTreeData {
         if (recipe == null) {
             return 1L;
         }
-        for (ItemStack output : recipe.outputs()) {
-            if (ingredientKey(output).equals(key)) {
-                return Math.max(1L, mapAmount(output, output.getCount()));
-            }
-        }
-        return 1L;
+        return RecipeTreeOutputChoices.amount(recipe.outputSlots(), key, RecipeTreeData::ingredientKey,
+            output -> mapAmount(output, output.getCount()));
     }
 
     private static long availableAmount(Map<String, Long> available, String key) {
@@ -1768,6 +1770,11 @@ public final class RecipeTreeData {
             return;
         }
         setAvailable(available, key, Math.max(0, availableAmount(available, key) - amount));
+    }
+
+    private static void resetAmounts(Node node) {
+        node.amount = 0;
+        for (Node child : node.children) resetAmounts(child);
     }
 
     private static void resetProgress(Node node) {

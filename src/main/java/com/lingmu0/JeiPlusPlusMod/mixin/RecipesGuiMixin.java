@@ -1,6 +1,5 @@
 package com.lingmu0.JeiPlusPlusMod.mixin;
 
-import mezz.jei.gui.elements.GuiIconButton;
 import mezz.jei.gui.recipes.IRecipeGuiLogic;
 import mezz.jei.gui.recipes.RecipesGui;
 import mezz.jei.common.util.ImmutableRect2i;
@@ -15,8 +14,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(value = RecipesGui.class, remap = false)
 public abstract class RecipesGuiMixin {
     @Shadow @Final private IRecipeGuiLogic logic;
-    @Shadow @Final private GuiIconButton nextRecipeCategory;
-    @Shadow @Final private GuiIconButton previousRecipeCategory;
 
     /**
      * JEI 15.x is shipped re-obfuscated in Forge.  Include both the named
@@ -38,7 +35,7 @@ public abstract class RecipesGuiMixin {
         double scrollDelta,
         CallbackInfoReturnable<Boolean> cir
     ) {
-        if (scrollDelta == 0 || !insideBand(mouseX, mouseY, previousRecipeCategory, nextRecipeCategory)) {
+        if (scrollDelta == 0 || !insideBand(mouseX, mouseY, com.lingmu0.JeiPlusPlusMod.client.JeiReflectionCompat.readField(this, "previousRecipeCategory"), com.lingmu0.JeiPlusPlusMod.client.JeiReflectionCompat.readField(this, "nextRecipeCategory"))) {
             return;
         }
         if (scrollDelta < 0) {
@@ -49,13 +46,12 @@ public abstract class RecipesGuiMixin {
         cir.setReturnValue(true);
     }
 
-    private static boolean insideBand(double mouseX, double mouseY, GuiIconButton left, GuiIconButton right) {
-        ImmutableRect2i leftArea = left.getArea();
-        ImmutableRect2i rightArea = right.getArea();
-        int leftEdge = leftArea.getX();
-        int rightEdge = rightArea.getX() + rightArea.getWidth();
-        int top = leftArea.getY() - 2;
-        int bottom = leftArea.getY() + leftArea.getHeight() + 2;
-        return mouseX >= leftEdge && mouseX <= rightEdge && mouseY >= top && mouseY <= bottom;
+    private static boolean insideBand(double mouseX, double mouseY, Object left, Object right) {
+        Object leftArea = com.lingmu0.JeiPlusPlusMod.client.JeiReflectionCompat.tryInvoke(left, "getArea");
+        Object rightArea = com.lingmu0.JeiPlusPlusMod.client.JeiReflectionCompat.tryInvoke(right, "getArea");
+        if (!(leftArea instanceof mezz.jei.common.util.ImmutableRect2i a)
+            || !(rightArea instanceof mezz.jei.common.util.ImmutableRect2i b)) return false;
+        return mouseX >= a.getX() && mouseX <= b.getX() + b.getWidth()
+            && mouseY >= a.getY() - 2 && mouseY <= a.getY() + a.getHeight() + 2;
     }
 }

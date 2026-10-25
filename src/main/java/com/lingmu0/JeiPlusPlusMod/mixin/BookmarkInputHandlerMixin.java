@@ -10,10 +10,10 @@ import mezz.jei.common.input.IInternalKeyMappings;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.bookmarks.RecipeBookmark;
-import mezz.jei.gui.input.IUserInputHandler;
-import mezz.jei.gui.input.UserInput;
-import mezz.jei.gui.input.handlers.BookmarkInputHandler;
-import mezz.jei.gui.input.handlers.SameElementInputHandler;
+
+import com.lingmu0.JeiPlusPlusMod.client.JeiReflectionCompat;
+import org.spongepowered.asm.mixin.Pseudo;
+import org.spongepowered.asm.mixin.injection.Coerce;
 import mezz.jei.gui.recipes.RecipeGuiLayouts;
 import mezz.jei.gui.recipes.RecipesGui;
 import org.spongepowered.asm.mixin.Final;
@@ -32,7 +32,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 /** Uses the recipe bookmark when bookmarking an ingredient in a recipe. */
-@Mixin(value = BookmarkInputHandler.class, remap = false)
+@Pseudo
+@Mixin(targets = "mezz.jei.gui.input.handlers.BookmarkInputHandler", remap = false)
 public abstract class BookmarkInputHandlerMixin {
     @Shadow @Final private BookmarkList bookmarkList;
 
@@ -51,8 +52,8 @@ public abstract class BookmarkInputHandlerMixin {
         remap = false
     )
     private void jeiPlusPlus$gateRecipeBookmark(
-        UserInput input,
-        CallbackInfoReturnable<java.util.Optional<IUserInputHandler>> cir
+        @Coerce Object input,
+        CallbackInfoReturnable<java.util.Optional<Object>> cir
     ) {
         if (JeiPlusPlusConfig.PREFER_RECIPE_BOOKMARK_ON_OUTPUT.get()
             && !isJeiBookmarkedRecipeSortingEnabled()) {
@@ -68,9 +69,9 @@ public abstract class BookmarkInputHandlerMixin {
         remap = false
     )
     private void jeiPlusPlus$preferRecipeBookmark(
-        UserInput input,
+        @Coerce Object input,
         IInternalKeyMappings keyBindings,
-        CallbackInfoReturnable<Optional<IUserInputHandler>> cir
+        CallbackInfoReturnable<Optional<Object>> cir
     ) {
         IJeiRuntime runtime = Internal.getJeiRuntime();
         if (!(runtime.getRecipesGui() instanceof RecipesGui recipesGui)
@@ -87,7 +88,7 @@ public abstract class BookmarkInputHandlerMixin {
             if (layout == null) {
                 continue;
             }
-            Optional<RecipeSlotUnderMouse> slotUnderMouse = layout.getSlotUnderMouse(input.getMouseX(), input.getMouseY());
+            Optional<RecipeSlotUnderMouse> slotUnderMouse = layout.getSlotUnderMouse(JeiReflectionCompat.inputMouseX(input), JeiReflectionCompat.inputMouseY(input));
             if (slotUnderMouse.isEmpty() || slotUnderMouse.get().slot().isEmpty()) {
                 continue;
             }
@@ -105,7 +106,7 @@ public abstract class BookmarkInputHandlerMixin {
                 continue;
             }
 
-            if (!input.isSimulate()) {
+            if (!JeiReflectionCompat.isInputSimulated(input)) {
                 if (JeiPlusPlusConfig.PREFER_RECIPE_BOOKMARK_ON_OUTPUT.get()
                     && isJeiBookmarkedRecipeSortingEnabled()) {
                     Optional<? extends RecipeBookmark<?, ?>> recipeBookmark =
@@ -121,8 +122,8 @@ public abstract class BookmarkInputHandlerMixin {
                         runtime.getIngredientManager().normalizeTypedIngredient(output.get()));
                 }
             }
-            IUserInputHandler currentHandler = (IUserInputHandler) (Object) this;
-            cir.setReturnValue(Optional.of(new SameElementInputHandler(currentHandler, layout::isMouseOver)));
+            Object currentHandler = (Object) (Object) this;
+            cir.setReturnValue(Optional.of(JeiReflectionCompat.sameElementInputHandler(currentHandler, layout::isMouseOver)));
             return;
         }
     }
@@ -242,7 +243,7 @@ public abstract class BookmarkInputHandlerMixin {
      */
     private static boolean isJeiBookmarkedRecipeSortingEnabled() {
         try {
-            Object config = Internal.getJeiClientConfigs().getClientConfig();
+            Object config = invokeNoArg(JeiReflectionCompat.clientConfigs(), "getClientConfig");
             Object stages;
             try {
                 stages = invokeNoArg(config, "getRecipeSorterStages");

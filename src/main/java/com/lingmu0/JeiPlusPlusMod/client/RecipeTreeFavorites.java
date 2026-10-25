@@ -19,7 +19,6 @@ import mezz.jei.common.Internal;
 import mezz.jei.common.platform.Services;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
-import mezz.jei.gui.input.UserInput;
 import mezz.jei.gui.overlay.elements.IElement;
 import mezz.jei.gui.util.FocusUtil;
 import net.minecraft.ChatFormatting;
@@ -522,7 +521,7 @@ public final class RecipeTreeFavorites {
         }
         int fallback = 9;
         try {
-            Object config = Internal.getJeiClientConfigs().getBookmarkListConfig();
+            Object config = JeiReflectionCompat.invokeNoArgs(JeiReflectionCompat.clientConfigs(), "getBookmarkListConfig");
             Object value;
             try {
                 value = config.getClass().getMethod("getMaxColumns").invoke(config);
@@ -608,6 +607,7 @@ public final class RecipeTreeFavorites {
                 case "getBookmark" -> Optional.empty();
                 case "createRenderOverlay", "show", "getTooltip", "tick" -> null;
                 case "isVisible" -> false;
+                case "prepareAction" -> Optional.empty();
                 case "handleClick" -> false;
                 case "equals" -> proxy == (arguments == null ? null : arguments[0]);
                 case "hashCode" -> System.identityHashCode(proxy);
@@ -729,7 +729,7 @@ public final class RecipeTreeFavorites {
             recipesGui.show(focusUtil.createFocuses(typed, roles));
         }
 
-        private boolean handleClick(UserInput input) {
+        private boolean handleClick(Object input) {
             // Synthetic recipe bookmarks must not shadow JEI's native cheat
             // item handler. When cheat mode is enabled, JEI owns the normal
             // left/shift-left click (one item or a stack); returning false
@@ -737,7 +737,7 @@ public final class RecipeTreeFavorites {
             if (step != null && jeiCheatItemsEnabled()) {
                 return false;
             }
-            if (step == null || input.getKey().getType() != InputConstants.Type.MOUSE || input.getKey().getValue() != 0) {
+            if (step == null || JeiReflectionCompat.inputKey(input).getType() != InputConstants.Type.MOUSE || JeiReflectionCompat.inputKey(input).getValue() != 0) {
                 return false;
             }
             // A normal click only transfers this recipe's direct inputs.  The
@@ -745,7 +745,7 @@ public final class RecipeTreeFavorites {
             // intermediate products whose direct inputs are not in the inventory.
             boolean recursive = JeiPlusPlusConfig.AUTOMATIC_CRAFTING_ENABLED.get()
                 && net.minecraft.client.gui.screens.Screen.hasControlDown();
-            if (input.isSimulate()) {
+            if (JeiReflectionCompat.isInputSimulated(input)) {
                 // Let JEI handle the click normally when this recipe cannot
                 // be transferred.  In particular, a plain left click on a
                 // recipe with no available direct ingredients should open its
@@ -848,7 +848,8 @@ public final class RecipeTreeFavorites {
                     show((IRecipesGui) args[0], (FocusUtil) args[1], (List<RecipeIngredientRole>) args[2]);
                     yield null;
                 }
-                case "handleClick" -> handleClick((UserInput) args[0]);
+                case "prepareAction" -> JeiReflectionCompat.prepareAction(args[0], this::handleClick);
+                case "handleClick" -> handleClick((Object) args[0]);
                 case "getTooltip" -> {
                     getTooltip((JeiTooltip) args[0], args[1], args[2], args[3]);
                     yield null;
