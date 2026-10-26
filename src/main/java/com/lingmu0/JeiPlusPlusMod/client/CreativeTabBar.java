@@ -116,9 +116,6 @@ public final class CreativeTabBar {
             );
         }
         pose.popPose();
-        if (source.jeiPlusPlus$isCreativeTabSelectorOpen()) {
-            CreativeTabSelector.draw(source, guiGraphics, mouseX, mouseY);
-        }
     }
 
     public static void drawTooltip(
@@ -132,7 +129,7 @@ public final class CreativeTabBar {
             return;
         }
         if (source.jeiPlusPlus$isCreativeTabSelectorOpen()) {
-            CreativeTabSelector.drawTooltip(source, guiGraphics, mouseX, mouseY);
+            // The modal and its tooltip are rendered together after the entire screen.
             return;
         }
         int pageCount = getPageCount(source.jeiPlusPlus$getCreativeTabs().size() + 1, getCapacity(area));

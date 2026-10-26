@@ -23,7 +23,7 @@ tasks.register('verifyJeiCompatibility') {
             def n=parse(f.bytes), simple=n.name.tokenize('/').last()
             if(simple=='RecipeGuiTabsMixin' && modern || simple=='BookmarkInputHandlerMixin' && modern) return
             if(simple=='RecipesGuiMixin' && modern) return
-            if(simple in ['JeiInteractionTabsMixin','JeiBookmarkCommandsMixin','JeiRecipeTreeInputMixin'] && !modern) return
+            if(simple in ['JeiInteractionTabsMixin','JeiBookmarkCommandsMixin','JeiRecipeTreeInputMixin','JeiInputSceneMixin','JeiIngredientOverlayInputMixin','JeiRecipeNavigationMixin'] && !modern) return
             if(simple=='IngredientLookupStateLegacyMixin' && service || simple=='IngredientLookupStateServiceMixin' && !service) return
             def anns=(n.visibleAnnotations?:[])+(n.invisibleAnnotations?:[])
             def declaration=av(anns.find { it.desc=='Lorg/spongepowered/asm/mixin/Mixin;' })
@@ -90,6 +90,31 @@ tasks.register('verifyJeiCompatibility') {
                 } }
             }
         }
+        // Rendering/input entry points matter as well as member signatures.
+        def own=[:]
+        sourceSets.main.output.classesDirs.files.each { d ->
+            fileTree(d).matching { include '**/*.class' }.files.each { f ->
+                def n=parse(f.bytes); own[n.name.tokenize('/').last()]=n
+            }
+        }
+        def calls = { n, name -> n.methods.find { it.name==name }.instructions.findAll { it instanceof MethodInsnNode } }
+        assert calls(own.RecipeTreeIcons, 'drawGlobalButton').any { it.name=='getButtonForState' || it.owner.endsWith('/ButtonSprites') && it.name=='render' } : 'Sidebar button must use the installed JEI skin'
+        assert calls(own.BookmarkOverlayMixin, 'jeiPlusPlus$render').any { it.name=='drawGlobalButton' } : 'Sidebar must render the state-aware button'
+        assert !calls(own.CreativeTabBar, 'draw').any { it.owner.endsWith('/CreativeTabSelector') && it.name=='draw' } : 'Modal must not render in the early ingredient pass'
+        assert !calls(own.CreativeTabBar, 'drawTooltip').any { it.owner.endsWith('/CreativeTabSelector') && it.name=='drawTooltip' } : 'Modal tooltip must wait for the final pass'
+        def modalCalls=calls(own.CreativeTabGridCompat, 'drawModal')*.name
+        assert modalCalls.indexOf('draw')>=0 && modalCalls.indexOf('drawTooltip')>modalCalls.indexOf('draw') : 'Modal tooltip must render after its panel'
+        assert models['mezz/jei/gui/events/GuiEventHandler'].methods.any { it.name in ['drawForScreenForeground','onDrawScreenPost'] } : 'No supported final JEI render pass'
+        assert calls(own.JeiModalRenderMixin, 'jeiPlusPlus$modal').any { it.name=='drawModal' }
+        if (modern) {
+            def navigationCalls=calls(own.JeiInputAreaCompat, 'scrollRecipeNavigation')*.name
+            assert navigationCalls.indexOf('scrollRecipeTabs')>=0 && navigationCalls.indexOf('scrollRecipeTabs')<navigationCalls.indexOf('buttonBand') : 'Tab rows must have first refusal'
+            assert calls(own.JeiRecipeNavigationMixin, 'jeiPlusPlus$navigation').any { it.name=='scrollRecipeNavigation' }
+            def constructors=models['mezz/jei/gui/recipes/RecipesGui'].methods.findAll { it.name=='<init>' }.collectMany { it.instructions.findAll { it instanceof TypeInsnNode && it.opcode==Opcodes.NEW }*.desc }
+            assert constructors.indexOf('mezz/jei/gui/recipes/RecipesGui$RecipeCategoryScrollInputHandler')>=0
+            assert constructors.indexOf('mezz/jei/gui/recipes/RecipesGui$RecipeCategoryScrollInputHandler')<constructors.indexOf('mezz/jei/gui/recipes/RecipesGui$RecipeNavigationInputHandler') : 'JEI input order changed'
+        }
+        logger.lifecycle('Verified native sidebar skin, final modal render pass and recipe-tab wheel priority')
         assert checks>0
         logger.lifecycle("JEI ${project.jei_version}: ${checks} active injection, field and callback checks passed; modern input=${modern}")
     }
