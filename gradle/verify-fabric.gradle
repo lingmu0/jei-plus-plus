@@ -84,6 +84,7 @@ tasks.register('verifyFabricJar') {
                 def names = (declaration.value ?: []).collect { ((Type) it).internalName } + (declaration.targets ?: []).collect { it.replace('.', '/') }
                 names.findAll { it.startsWith('mezz/jei/') && targets.containsKey(it) }.each { name ->
                     boolean modern = targets.containsKey('mezz/jei/common/input/IInputTarget')
+                    if (['JeiInputSceneMixin','JeiIngredientOverlayInputMixin','JeiRecipeNavigationMixin'].any { mixin.name.endsWith('/' + it) } && !modern) return
                     if (mixin.name.endsWith('/RecipeGuiTabsMixin') && modern) return
                     if (mixin.name.endsWith('/RecipesGuiMixin') && modern) return
                     if ((mixin.name.endsWith('/JeiInteractionTabsMixin') || mixin.name.endsWith('/JeiBookmarkCommandsMixin')) && !modern) return
