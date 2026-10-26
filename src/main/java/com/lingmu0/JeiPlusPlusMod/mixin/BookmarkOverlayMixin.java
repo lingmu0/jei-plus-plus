@@ -17,7 +17,7 @@ import java.util.*;
 
 /** Overlay button shared by the legacy input handlers and new interaction targets. */
 @Mixin(targets = "mezz.jei.gui.overlay.bookmarks.BookmarkOverlay", remap = false)
-public abstract class BookmarkOverlayMixin {
+public abstract class BookmarkOverlayMixin implements JeiExtraInputArea {
     @Shadow @Final private BookmarkList bookmarkList;
     @Unique private ImmutableRect2i jeiPlusPlus$area = ImmutableRect2i.EMPTY;
 
@@ -25,6 +25,13 @@ public abstract class BookmarkOverlayMixin {
         Screen screen = Minecraft.getInstance().screen;
         return JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get() && (screen instanceof RecipeTreeScreen
             || screen instanceof AbstractContainerScreen<?> || screen instanceof mezz.jei.gui.recipes.RecipesGui);
+    }
+
+    @Override
+    public boolean jeiPlusPlus$containsExtraInput(double x, double y) {
+        if (!jeiPlusPlus$visible()) return false;
+        jeiPlusPlus$place();
+        return jeiPlusPlus$area.contains(x, y);
     }
 
     @Unique private void jeiPlusPlus$place() {
@@ -37,7 +44,8 @@ public abstract class BookmarkOverlayMixin {
         } else if (bounds instanceof ImmutableRect2i area && !area.isEmpty()) {
             jeiPlusPlus$area = area.moveRight(area.getWidth() + 2);
         } else {
-            jeiPlusPlus$area = new ImmutableRect2i(28, Minecraft.getInstance().getWindow().getGuiScaledHeight() - 26, 20, 20);
+            // Follow JEI when the sidebar has no room; do not leave a floating hit box.
+            jeiPlusPlus$area = ImmutableRect2i.EMPTY;
         }
     }
 
@@ -61,19 +69,20 @@ public abstract class BookmarkOverlayMixin {
         if (!jeiPlusPlus$visible()) return;
         jeiPlusPlus$place();
         if (jeiPlusPlus$area.isEmpty()) return;
-        int left = jeiPlusPlus$area.getX(), top = jeiPlusPlus$area.getY();
-        graphics.fill(left, top, left + 20, top + 20, 0xFF101010);
-        graphics.fill(left + 1, top + 1, left + 19, top + 19,
-            jeiPlusPlus$area.contains(x, y) ? 0xFF777777 : 0xFF444444);
-        RecipeTreeIcons.drawGlobalTree(graphics, left + 1, top + 1);
+        RecipeTreeIcons.drawGlobalButton(graphics, jeiPlusPlus$area,
+            !CreativeTabGridCompat.isAnySelectorOpen() && jeiPlusPlus$area.contains(x, y),
+            RecipeTreeSession.tree() != null);
     }
 
     @Inject(method = "drawTooltips", at = @At("HEAD"), cancellable = true, remap = false)
     private void jeiPlusPlus$tooltip(Minecraft mc, GuiGraphics graphics, int x, int y, CallbackInfo ci) {
         if (CreativeTabGridCompat.isAnySelectorOpen()) { ci.cancel(); return; }
+        if (jeiPlusPlus$visible()) jeiPlusPlus$place();
         if (jeiPlusPlus$visible() && jeiPlusPlus$area.contains(x, y)) {
             graphics.renderTooltip(mc.font, List.of(Component.translatable("jei_plus_plus.recipe_tree.global_button"),
-                Component.translatable("jei_plus_plus.recipe_tree.global_button.clear")), Optional.empty(), x, y);
+                Component.translatable(RecipeTreeSession.tree() == null
+                    ? "jei_plus_plus.recipe_tree.empty_hint"
+                    : "jei_plus_plus.recipe_tree.global_button.clear")), Optional.empty(), x, y);
         }
     }
 

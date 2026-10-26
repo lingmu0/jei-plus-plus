@@ -129,7 +129,7 @@ JSON 分组示例：
 
 | 游戏版本 | 加载器 | Java | JEI 开发运行版本 | 模组版本 |
 | --- | --- | --- | --- | --- |
-| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.74.0.229 | 1.0.8-1.20.1 |
+| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.74.0.229 | 1.0.8a-1.20.1 |
 
 声明的 JEI 兼容范围从 15.19.5.99 起，表中版本是当前开发运行版本。
 
@@ -169,7 +169,7 @@ Candidate, per-recipe snapshot, recipe-status, layout, inventory/network, and fl
 
 | Minecraft | Loader | Java | JEI development runtime | Mod version |
 | --- | --- | --- | --- | --- |
-| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.74.0.229 | 1.0.8-1.20.1 |
+| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.74.0.229 | 1.0.8a-1.20.1 |
 
 The declared JEI compatibility floor is 15.19.5.99; the table lists the current development dependency.
 
