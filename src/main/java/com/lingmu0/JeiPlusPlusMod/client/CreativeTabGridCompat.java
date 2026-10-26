@@ -53,10 +53,35 @@ public final class CreativeTabGridCompat {
         }
     }
 
+    /** Called only from JEI's final screen pass, never from the ingredient background pass. */
+    public static void drawModal(Object overlay, GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+        if (!selectorOpen || !JeiPlusPlusConfig.CREATIVE_TAB_BAR_ENABLED.get()) return;
+        Object owner = JeiReflectionCompat.readField(overlay, "contents");
+        IngredientListFeatureSource source = getFeatureSource(owner);
+        if (source == null || !source.jeiPlusPlus$isCreativeTabSelectorOpen()) return;
+        graphics.nextStratum();
+        CreativeTabSelector.draw(source, graphics, mouseX, mouseY);
+        CreativeTabSelector.drawTooltip(source, graphics, mouseX, mouseY);
+        graphics.nextStratum();
+    }
+
     public static Object wrapInput(Object owner, Object delegate) {
         return JeiReflectionCompat.customInputHandler(
             (proxy, method, args) -> handleTabInput(owner, delegate, proxy, method, args)
         );
+    }
+
+    public static boolean containsExtraInput(Object owner, double x, double y) {
+        IngredientListFeatureSource source = getFeatureSource(owner);
+        return source != null && JeiPlusPlusConfig.CREATIVE_TAB_BAR_ENABLED.get()
+            && !source.jeiPlusPlus$getCreativeTabs().isEmpty()
+            && (source.jeiPlusPlus$isCreativeTabSelectorOpen() || getArea(owner).contains(x, y));
+    }
+
+    /** Unlike isSelectorOpen, only the actual ingredient list can own the modal picker. */
+    public static boolean ownsSelector(Object owner) {
+        IngredientListFeatureSource source = getFeatureSource(owner);
+        return source != null && source.jeiPlusPlus$isCreativeTabSelectorOpen();
     }
 
     public static boolean isSelectorOpen(Object owner) {
@@ -139,6 +164,18 @@ public final class CreativeTabGridCompat {
                     );
                     if (result.isPresent()) {
                         return result;
+                    }
+                }
+                double x = ((Number) args[0]).doubleValue();
+                double y = ((Number) args[1]).doubleValue();
+                double dy = ((Number) args[args.length - 1]).doubleValue();
+                if (dy != 0 && JeiInputAreaCompat.insideBand(x, y,
+                    JeiReflectionCompat.tryInvoke(owner, "getBackButtonArea"),
+                    JeiReflectionCompat.tryInvoke(owner, "getNextPageButtonArea"))) {
+                    Object pages = JeiReflectionCompat.tryInvoke(owner, "getPageDelegate");
+                    if (pages != null) {
+                        JeiReflectionCompat.invokeNoArgsUnchecked(pages, dy < 0 ? "nextPage" : "previousPage");
+                        return java.util.Optional.of(proxy);
                     }
                 }
                 return JeiReflectionCompat.invokeInputHandler(delegate, method, args);

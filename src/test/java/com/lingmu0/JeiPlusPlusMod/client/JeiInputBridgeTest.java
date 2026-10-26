@@ -40,6 +40,7 @@ public final class JeiInputBridgeTest {
                 if (modern ? !Boolean.TRUE.equals(value) : ((Optional<?>) value).isEmpty()) throw new AssertionError("scroll dispatch");
             }
         }
+        if (modern) JeiInputSceneTest.run(target, api, begin, inputArgs);
         System.out.println("JEI input compatibility checks passed against " + api.getName());
     }
 

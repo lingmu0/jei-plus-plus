@@ -8,9 +8,9 @@ JEI++ 是一个客户端必需、服务端可选的 JEI 附属模组。仅客户
 
 ## Fabric 移植 / Fabric port
 
-本分支为 Minecraft **26.1.2 Fabric**，版本 **1.0.8-26.1.2-fabric**。安装 Fabric Loader 0.19.5 或更新版本、对应 Minecraft 的 Fabric API，以及客户端 JEI。游戏需要 Java 25；构建源码统一使用 JDK 25。
+本分支为 Minecraft **26.1.2 Fabric**，版本 **1.0.8a-26.1.2-fabric**。安装 Fabric Loader 0.19.5 或更新版本、对应 Minecraft 的 Fabric API，以及客户端 JEI。游戏需要 Java 25；构建源码统一使用 JDK 25。
 
-This branch targets **Minecraft 26.1.2 Fabric**, version **1.0.8-26.1.2-fabric**. Install Fabric Loader 0.19.5+, the matching Fabric API, and JEI on the client. The game requires Java 25; building from source uses JDK 25.
+This branch targets **Minecraft 26.1.2 Fabric**, version **1.0.8a-26.1.2-fabric**. Install Fabric Loader 0.19.5+, the matching Fabric API, and JEI on the client. The game requires Java 25; building from source uses JDK 25.
 
 - 三个 Fabric 分支：`codex/fabric-1.20.1`、`codex/fabric-1.21.1`、`codex/fabric-26.1.2`。
 - 配方树、目录、书签、物品分组、分类弹窗、高亮与自动合成保留；第三方集成仅在对应模组提供兼容 Fabric 构建时可用，不能使用 Forge/NeoForge JAR。
@@ -163,9 +163,9 @@ JSON 分组示例：
 
 | 游戏版本 | 加载器 | Java | JEI 开发运行版本 | 模组版本 |
 | --- | --- | --- | --- | --- |
-| 1.20.1 | Fabric Loader 0.19.5+ | 17 | JEI 15.74.0.229 | 1.0.8-1.20.1-fabric |
-| 1.21.1 | Fabric Loader 0.19.5+ | 21 | JEI 19.70.0.458 | 1.0.8-1.21.1-fabric |
-| 26.1.2 | Fabric Loader 0.19.5+ | 25 | JEI 29.47.0.111 | 1.0.8-26.1.2-fabric |
+| 1.20.1 | Fabric Loader 0.19.5+ | 17 | JEI 15.74.0.229 | 1.0.8a-1.20.1-fabric |
+| 1.21.1 | Fabric Loader 0.19.5+ | 21 | JEI 19.70.0.458 | 1.0.8a-1.21.1-fabric |
+| 26.1.2 | Fabric Loader 0.19.5+ | 25 | JEI 29.47.0.111 | 1.0.8a-26.1.2-fabric |
 
 1.20.1 的声明兼容范围从 JEI 15.19.5.99 起，1.21.1 的声明兼容范围从 JEI 19.27.0 起，26.1.2 的声明兼容范围从 JEI 29.43.0.106 起；表中 JEI 版本是当前开发运行版本。
 
@@ -251,9 +251,9 @@ The addon supports multiple JEI layout, bookmark, ingredient-list, and renderer 
 
 | Minecraft | Loader | Java | JEI development runtime | Mod version |
 | --- | --- | --- | --- | --- |
-| 1.20.1 | Fabric Loader 0.19.5+ | 17 | JEI 15.74.0.229 | 1.0.8-1.20.1-fabric |
-| 1.21.1 | Fabric Loader 0.19.5+ | 21 | JEI 19.70.0.458 | 1.0.8-1.21.1-fabric |
-| 26.1.2 | Fabric Loader 0.19.5+ | 25 | JEI 29.47.0.111 | 1.0.8-26.1.2-fabric |
+| 1.20.1 | Fabric Loader 0.19.5+ | 17 | JEI 15.74.0.229 | 1.0.8a-1.20.1-fabric |
+| 1.21.1 | Fabric Loader 0.19.5+ | 21 | JEI 19.70.0.458 | 1.0.8a-1.21.1-fabric |
+| 26.1.2 | Fabric Loader 0.19.5+ | 25 | JEI 29.47.0.111 | 1.0.8a-26.1.2-fabric |
 
 The declared compatibility floor is JEI 15.19.5.99 for 1.20.1, JEI 19.27.0 for 1.21.1, and JEI 29.43.0.106 for 26.1.2; the table lists the current JEI development runtime versions.
 

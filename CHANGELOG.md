@@ -1,5 +1,25 @@
 # 更新日志 / Changelog
 
+## 1.0.8a — 2026-10-26
+
+### 中文
+
+- 修复新版 JEI 先按原生输入区域筛选事件，导致配方树按钮和创造物品分类栏无法响应的问题。
+- 分类选择弹窗打开时优先接收输入，避免点击穿透到配方、书签或容器；移至最终绘制阶段，避免被配方界面覆盖。
+- 恢复左下角配方树按钮的 JEI 原生皮肤、悬停和选中状态；侧栏没有空间时不再绘制悬空按钮。
+- 修复分类页码行和分类图标行的滚轮事件被配方翻页处理器提前消耗的问题。
+- 恢复额外滚轮导航：物品列表页码区域整页翻页，配方导航行与分类图标行切换。
+- 保留旧版 JEI 输入分支，新增真实 JEI 输入场景的无游戏启动回归检查。
+
+### English
+
+- Fixed the recipe-tree button and creative item tabs not responding because newer JEI filters events against native input areas.
+- Give the open category picker input priority over recipes, bookmarks, and containers, and render it in the final screen pass so recipes cannot cover it.
+- Restore the native JEI skin, hover and selection states of the lower-left recipe-tree button, and hide it when the sidebar has no room.
+- Handle category-page and category-icon wheel input before JEI's generic recipe-page handler consumes it.
+- Restored extra wheel navigation for full-page ingredient-list paging and recipe/category navigation rows.
+- Retained legacy JEI input paths and added headless regression coverage using real JEI input scenes.
+
 ## 1.0.8 — 2026-10-25
 
 ### 中文
