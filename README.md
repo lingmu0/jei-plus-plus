@@ -149,8 +149,8 @@ JSON 分组示例：
 
 | 游戏版本 | 加载器 | Java | JEI 开发运行版本 | 模组版本 |
 | --- | --- | --- | --- | --- |
-| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.74.0.229 | 1.0.8-1.20.1 |
-| 1.21.1 | NeoForge 21.1.238 | 21 | JEI 19.70.0.458 | 1.0.8-1.21.1 |
+| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.74.0.229 | 1.0.8a-1.20.1 |
+| 1.21.1 | NeoForge 21.1.238 | 21 | JEI 19.70.0.458 | 1.0.8a-1.21.1 |
 
 1.20.1 的声明兼容范围从 JEI 15.19.5.99 起，1.21.1 的声明兼容范围从 JEI 19.27.0 起；表中 JEI 版本是当前开发运行版本。
 
@@ -236,8 +236,8 @@ The addon supports multiple JEI layout, bookmark, ingredient-list, and renderer 
 
 | Minecraft | Loader | Java | JEI development runtime | Mod version |
 | --- | --- | --- | --- | --- |
-| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.74.0.229 | 1.0.8-1.20.1 |
-| 1.21.1 | NeoForge 21.1.238 | 21 | JEI 19.70.0.458 | 1.0.8-1.21.1 |
+| 1.20.1 | Forge 47.4.22 | 17 | JEI 15.74.0.229 | 1.0.8a-1.20.1 |
+| 1.21.1 | NeoForge 21.1.238 | 21 | JEI 19.70.0.458 | 1.0.8a-1.21.1 |
 
 The declared compatibility floor is JEI 15.19.5.99 for 1.20.1 and JEI 19.27.0 for 1.21.1; the table lists the current JEI development runtime versions.
 

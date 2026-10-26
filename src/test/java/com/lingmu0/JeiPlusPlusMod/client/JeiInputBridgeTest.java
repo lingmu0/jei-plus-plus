@@ -5,6 +5,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public final class JeiInputBridgeTest {
     public static void main(String[] args) throws Exception {
+        ClassLoader loader = JeiInputBridgeTest.class.getClassLoader();
+        Class<?> textures = Class.forName("mezz.jei.common.gui.textures.Textures", false, loader);
+        Method skinSelector = textures.getMethod("getButtonForState", boolean.class, boolean.class, boolean.class);
+        Class<?> scalable = Class.forName("mezz.jei.api.gui.drawable.IScalableDrawable", false, loader);
+        if (!scalable.isAssignableFrom(skinSelector.getReturnType())) throw new AssertionError("Unsupported native JEI button skin return type");
+        System.out.println("JEI native button skin checks passed: " + skinSelector.getReturnType().getSimpleName());
         AtomicInteger calls = new AtomicInteger();
         Object target = JeiReflectionCompat.customInputHandler((proxy, method, values) -> switch (method.getName()) {
             case "toString" -> "JEI++ test input";
@@ -40,6 +46,7 @@ public final class JeiInputBridgeTest {
                 if (modern ? !Boolean.TRUE.equals(value) : ((Optional<?>) value).isEmpty()) throw new AssertionError("scroll dispatch");
             }
         }
+        if (modern) JeiInputSceneTest.run(target, api, begin, inputArgs);
         System.out.println("JEI input compatibility checks passed against " + api.getName());
     }
 

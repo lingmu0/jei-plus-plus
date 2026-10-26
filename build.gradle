@@ -117,6 +117,9 @@ tasks.register('testRecipeTreeMaterials', JavaExec) {
     classpath = sourceSets.test.runtimeClasspath + configurations.localRuntime
     mainClass = 'com.lingmu0.JeiPlusPlusMod.client.RecipeTreeOutputChoicesTest'
 }
+// Scene regression fixtures use JEI rectangle types from the legacy compile baseline.
+sourceSets.test.compileClasspath += sourceSets.main.compileClasspath
+
 tasks.register('testJeiInputBridge', JavaExec) {
     dependsOn tasks.named('testClasses')
     classpath = sourceSets.test.runtimeClasspath + configurations.localRuntime
