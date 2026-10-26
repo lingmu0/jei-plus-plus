@@ -17,17 +17,7 @@ public abstract class JeiInteractionTabsMixin {
 
     @Inject(method="scroll", at=@At("HEAD"), cancellable=true, remap=false)
     private void jeiPlusPlus$scroll(double x, double y, double dx, double dy, CallbackInfoReturnable<Boolean> cir) {
-        if (dy == 0) return;
-        Object pages = JeiReflectionCompat.readField(this, "pageNavigation");
-        Object previous = JeiReflectionCompat.tryInvoke(pages, "getBackButtonArea");
-        Object next = JeiReflectionCompat.tryInvoke(pages, "getNextButtonArea");
-        if (previous instanceof ImmutableRect2i left && next instanceof ImmutableRect2i right
-            && x >= left.getX()-2 && x <= right.getX()+right.getWidth()+2
-            && y >= left.getY()-2 && y <= left.getY()+left.getHeight()+2) {
-            if (dy < 0) nextPage(); else previousPage();
-            cir.setReturnValue(true);
-        } else if (area.contains(x,y)) {
-            if (dy < 0) recipeGuiLogic.nextRecipeCategory(); else recipeGuiLogic.previousRecipeCategory();
+        if (com.lingmu0.JeiPlusPlusMod.client.JeiInputAreaCompat.scrollRecipeTabs(this, x, y, dy)) {
             cir.setReturnValue(true);
         }
     }
