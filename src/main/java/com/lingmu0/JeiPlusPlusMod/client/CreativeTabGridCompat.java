@@ -54,6 +54,31 @@ public final class CreativeTabGridCompat {
     }
 
     public static Object wrapInput(Object owner, Object delegate) {
+        if (ModernInputTargetCompat.isAvailable()) {
+            return ModernInputTargetCompat.wrap(
+                delegate,
+                (screen, input) -> {
+                    IngredientListFeatureSource source = getFeatureSource(owner);
+                    return source != null && CreativeTabBar.handleClick(source, getArea(owner), input);
+                },
+                (mouseX, mouseY, scrollX, scrollY) -> {
+                    IngredientListFeatureSource source = getFeatureSource(owner);
+                    if (source == null) {
+                        return null;
+                    }
+                    boolean consumed = CreativeTabBar.handleScroll(
+                        source,
+                        getArea(owner),
+                        mouseX,
+                        mouseY,
+                        scrollY,
+                        delegate
+                    ).isPresent();
+                    // A null result lets the wrapped grid handle the scroll.
+                    return consumed ? Boolean.TRUE : null;
+                }
+            );
+        }
         return JeiReflectionCompat.customInputHandler(
             (proxy, method, args) -> handleTabInput(owner, delegate, proxy, method, args)
         );

@@ -12,7 +12,6 @@ import mezz.jei.common.input.IInternalKeyMappings;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.IBookmark;
 import mezz.jei.gui.bookmarks.RecipeBookmark;
-import mezz.jei.gui.input.handlers.BookmarkInputHandler;
 import mezz.jei.gui.recipes.IRecipeLayoutWithButtons;
 import mezz.jei.gui.recipes.RecipeGuiLayouts;
 import mezz.jei.gui.recipes.RecipesGui;
@@ -20,6 +19,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Coerce;
@@ -33,7 +33,8 @@ import java.util.Objects;
 import java.util.Optional;
 
 /** Uses the preferred recipe only for output-slot bookmarks. */
-@Mixin(value = BookmarkInputHandler.class, remap = false)
+@Pseudo
+@Mixin(targets = "mezz.jei.gui.input.handlers.BookmarkInputHandler", remap = false)
 public abstract class BookmarkInputHandlerMixin {
     @Shadow @Final private BookmarkList bookmarkList;
 
@@ -278,57 +279,8 @@ public abstract class BookmarkInputHandlerMixin {
         return Objects.equals(a, b);
     }
 
-    /**
-     * Recipe bookmarks only make sense when JEI's own BOOKMARKED sorter is
-     * enabled. When the player disables that stage, keep normal ingredient
-     * bookmark behavior even if the JEI++ preference is enabled.
-     */
     private static boolean isJeiBookmarkedRecipeSortingEnabled() {
-        try {
-            Object config = invokeNoArg(JeiReflectionCompat.clientConfigs(), "getClientConfig");
-            Object stages;
-            try {
-                // JEI 15.x exposes getRecipeSorterStages() directly.
-                stages = invokeNoArg(config, "getRecipeSorterStages");
-            } catch (ReflectiveOperationException ignored) {
-                // JEI 19.x exposes recipeSorterStages().getValue().
-                Object value = invokeNoArg(config, "recipeSorterStages");
-                stages = invokeNoArg(value, "getValue");
-            }
-            if (stages instanceof java.util.Collection<?> collection) {
-                return collection.stream().anyMatch(BookmarkInputHandlerMixin::isBookmarkedStage);
-            }
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
-            // If a future JEI hides this config, fail closed: an ingredient
-            // bookmark is safer than unexpectedly creating a recipe bookmark.
-        }
-        return false;
-    }
-
-    private static boolean isBookmarkedStage(Object value) {
-        if (value instanceof Enum<?> enumValue) {
-            return "BOOKMARKED".equals(enumValue.name());
-        }
-        return "BOOKMARKED".equals(String.valueOf(value));
-    }
-
-    private static Object invokeNoArg(Object target, String name) throws ReflectiveOperationException {
-        if (target == null) {
-            throw new NoSuchMethodException(name);
-        }
-        Class<?> type = target.getClass();
-        while (type != null) {
-            try {
-                Method method = type.getDeclaredMethod(name);
-                method.setAccessible(true);
-                return method.invoke(target);
-            } catch (NoSuchMethodException ignored) {
-                type = type.getSuperclass();
-            }
-        }
-        Method method = target.getClass().getMethod(name);
-        method.setAccessible(true);
-        return method.invoke(target);
+        return JeiReflectionCompat.isBookmarkedRecipeSortingEnabled();
     }
 
 }

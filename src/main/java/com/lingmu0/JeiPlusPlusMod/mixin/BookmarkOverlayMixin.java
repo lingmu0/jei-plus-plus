@@ -3,6 +3,7 @@ package com.lingmu0.JeiPlusPlusMod.mixin;
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
 import com.lingmu0.JeiPlusPlusMod.client.CreativeTabGridCompat;
 import com.lingmu0.JeiPlusPlusMod.client.JeiReflectionCompat;
+import com.lingmu0.JeiPlusPlusMod.client.ModernInputTargetCompat;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeFavorites;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeScreen;
 import com.lingmu0.JeiPlusPlusMod.client.RecipeTreeSession;
@@ -164,6 +165,24 @@ public abstract class BookmarkOverlayMixin {
         jeiPlusPlus$ensureTreeButton();
         Object original = cir.getReturnValue();
         Object buttonInput = JeiReflectionCompat.invokeNoArgsUnchecked(jeiPlusPlus$treeButton, "createInputHandler");
+        if (ModernInputTargetCompat.isAvailable()) {
+            Object treeButtonInput = buttonInput;
+            Object normalScreenInput = ModernInputTargetCompat.group(
+                "JeiPlusPlusRecipeTreeAndBookmarks",
+                buttonInput,
+                original
+            );
+            cir.setReturnValue(ModernInputTargetCompat.defer(() -> {
+                if (!JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get()) {
+                    return original;
+                }
+                if (Minecraft.getInstance().screen instanceof RecipeTreeScreen) {
+                    return treeButtonInput;
+                }
+                return jeiPlusPlus$isTreeButtonScreen() ? normalScreenInput : original;
+            }, this::jeiPlusPlus$handleTreeButtonClick, null));
+            return;
+        }
         Object rightClickInput = JeiReflectionCompat.customInputHandler(this::jeiPlusPlus$handleRightClickInput);
         Object treeButtonInput = JeiReflectionCompat.combineInputHandlers(
             "JeiPlusPlusRecipeTreeButton",
@@ -282,5 +301,29 @@ public abstract class BookmarkOverlayMixin {
             }
         }
         return Optional.of(proxy);
+    }
+
+    /** JEI 19.64+ input targets answer a press with a boolean instead of a handler. */
+    @Unique
+    private boolean jeiPlusPlus$handleTreeButtonClick(Object screenArg, Object input) {
+        if (!(screenArg instanceof Screen screen) || !jeiPlusPlus$isTreeButtonScreen()) {
+            return false;
+        }
+        InputConstants.Key key = JeiReflectionCompat.inputKey(input);
+        if (key.getType() != InputConstants.Type.MOUSE
+            || key.getValue() != 1
+            || !jeiPlusPlus$treeButton.isMouseOver(
+                JeiReflectionCompat.inputMouseX(input),
+                JeiReflectionCompat.inputMouseY(input)
+            )) {
+            return false;
+        }
+        if (!JeiReflectionCompat.isInputSimulated(input)) {
+            RecipeTreeSession.clear();
+            if (screen instanceof RecipeTreeScreen treeScreen) {
+                treeScreen.onClose();
+            }
+        }
+        return true;
     }
 }

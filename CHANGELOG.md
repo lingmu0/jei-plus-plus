@@ -1,5 +1,23 @@
 # 更新日志 / Changelog
 
+## 1.0.7 — 2026-11-04
+
+### 中文
+
+- 适配 JEI 19.64 起的新输入系统（`IInputTarget`）：`RecipesGui.mouseScrolled` 已被移除，`BookmarkInputHandler` 也被 `BookmarkCommands` 取代，旧写法在 JEI 19.70 上会直接注入失败导致崩溃。
+- 滚轮导航照旧：分类箭头所在区域滚轮切换配方分类，分类页签行的页码条滚轮翻页；JEI 19.64+ 由新的 `scroll` 钩子实现，旧版本仍走 `RecipesGui.mouseScrolled`。
+- 书签树按钮、创造物品分类栏、输出槽位「优先配方书签」等与输入相关的功能改由新的输入桥接层实现，语义与旧路径一致。
+- JEI 19.57 及更早的版本继续使用原有的 `IUserInputHandler` 路径，行为不变。
+- 编译与本地运行使用的 JEI 更新至 19.70.0.469，并补充 Maven Central 仓库（JEI 拆分子模块的传递依赖）。
+
+### English
+
+- Support JEI 19.64+ input targets (`IInputTarget`). `RecipesGui.mouseScrolled` no longer exists and `BookmarkInputHandler` became `BookmarkCommands`, so the previous injections crashed on JEI 19.70.
+- Wheel navigation is unchanged: scrolling over the recipe-category arrows cycles categories and scrolling over the category tab page indicator flips its page. JEI 19.64+ uses a new `scroll` hook while older builds keep `RecipesGui.mouseScrolled`.
+- The recipe-tree button, creative-tab bar, and the preferred output-slot recipe bookmark now use a new input bridge with the same behavior as before.
+- JEI 19.57 and older keep the original `IUserInputHandler` path and are not affected.
+- Updated the JEI compile and runtime version to 19.70.0.469 and added Maven Central for the transitive dependencies of JEI's split modules.
+
 ## 1.0.6 — 2026-09-27
 
 ### 中文

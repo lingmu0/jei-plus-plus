@@ -177,6 +177,40 @@ public final class JeiReflectionCompat {
         );
     }
 
+    /**
+     * Recipe bookmarks only make sense while JEI's own BOOKMARKED sorter is
+     * enabled. When the player disables that stage, keep normal ingredient
+     * bookmark behavior even if the JEI++ preference is enabled.
+     */
+    public static boolean isBookmarkedRecipeSortingEnabled() {
+        try {
+            Object config = invokeNoArgs(clientConfigs(), "getClientConfig");
+            Object stages;
+            try {
+                // JEI 15.x exposes getRecipeSorterStages() directly.
+                stages = invokeNoArgs(config, "getRecipeSorterStages");
+            } catch (ReflectiveOperationException ignored) {
+                // JEI 19.x exposes recipeSorterStages().getValue().
+                Object value = invokeNoArgs(config, "recipeSorterStages");
+                stages = invokeNoArgs(value, "getValue");
+            }
+            if (stages instanceof java.util.Collection<?> collection) {
+                return collection.stream().anyMatch(JeiReflectionCompat::isBookmarkedStage);
+            }
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // If a future JEI hides this config, fail closed: an ingredient
+            // bookmark is safer than unexpectedly creating a recipe bookmark.
+        }
+        return false;
+    }
+
+    private static boolean isBookmarkedStage(Object value) {
+        if (value instanceof Enum<?> enumValue) {
+            return "BOOKMARKED".equals(enumValue.name());
+        }
+        return "BOOKMARKED".equals(String.valueOf(value));
+    }
+
     public static InputConstants.Key inputKey(Object input) {
         return (InputConstants.Key) invokeNoArgsUnchecked(input, "getKey");
     }

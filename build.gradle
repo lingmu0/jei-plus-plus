@@ -66,6 +66,9 @@ afterEvaluate {
 
 repositories {
     maven { url = 'https://maven.blamejared.com' }
+    // JEI 19.64+ publishes jei-*-common/lib/gui separately; those poms pull
+    // net.mezzdev:deduplicating-runner, which is only published on Central.
+    mavenCentral()
 }
 
 configurations {
