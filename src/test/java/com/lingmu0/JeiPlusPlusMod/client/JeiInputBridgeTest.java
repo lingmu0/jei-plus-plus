@@ -5,6 +5,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public final class JeiInputBridgeTest {
     public static void main(String[] args) throws Exception {
+        Method factory = JeiReflectionCompat.class.getDeclaredMethod("mouseOverable", java.util.function.BiPredicate.class);
+        factory.setAccessible(true);
+        java.util.function.BiPredicate<Double, Double> expected = (x, y) -> x == 7.0 && y == 8.0;
+        Object mouse = factory.invoke(null, expected);
+        java.util.function.BiPredicate<Double, Double> actual = JeiReflectionCompat.mouseOverPredicate(mouse);
+        if (!actual.test(7.0, 8.0) || actual.test(8.0, 7.0)) throw new AssertionError("JEI mouse-over round trip");
+        System.out.println("JEI mouse-over compatibility checks passed");
         ClassLoader loader = JeiInputBridgeTest.class.getClassLoader();
         Class<?> textures = Class.forName("mezz.jei.common.gui.textures.Textures", false, loader);
         Method skinSelector = textures.getMethod("getButtonForState", boolean.class, boolean.class, boolean.class);
