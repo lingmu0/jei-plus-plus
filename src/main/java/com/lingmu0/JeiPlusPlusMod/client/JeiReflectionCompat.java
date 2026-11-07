@@ -204,19 +204,21 @@ public final class JeiReflectionCompat {
     }
 
     public static BiPredicate<Double, Double> mouseOverPredicate(Object mouseOverable) {
-        final Method method;
+        Method resolved = null;
         try {
             // JEI often passes a generated lambda here. Resolve the method on
             // the public interface so invocation does not depend on the
             // generated implementation class being accessible.
-            method = loadType(MOUSE_OVER_TYPES).getMethod(
-                "isMouseOver",
-                double.class,
-                double.class
-            );
+            Class<?> type = loadType(MOUSE_OVER_TYPES);
+            for (String name : new String[]{"isMouseOver", "containsMouse"}) {
+                try { resolved = type.getMethod(name, double.class, double.class); break; }
+                catch (NoSuchMethodException ignored) { }
+            }
+            if (resolved == null) throw new NoSuchMethodException(type.getName());
         } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException("Unable to query JEI mouse-over target", exception);
         }
+        final Method method = resolved;
 
         return (mouseX, mouseY) -> {
             try {
@@ -242,7 +244,7 @@ public final class JeiReflectionCompat {
             mouseOverType.getClassLoader(),
             new Class<?>[]{mouseOverType},
             (proxy, method, args) -> switch (method.getName()) {
-                case "isMouseOver" -> isMouseOver.test(
+                case "isMouseOver", "containsMouse" -> isMouseOver.test(
                     ((Number) args[0]).doubleValue(),
                     ((Number) args[1]).doubleValue()
                 );

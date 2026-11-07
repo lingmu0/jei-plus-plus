@@ -5,6 +5,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public final class JeiInputBridgeTest {
     public static void main(String[] args) throws Exception {
+        Method factory = JeiReflectionCompat.class.getDeclaredMethod("mouseOverable", java.util.function.BiPredicate.class);
+        factory.setAccessible(true);
+        java.util.function.BiPredicate<Double, Double> expected = (x, y) -> x == 7.0 && y == 8.0;
+        Object mouse = factory.invoke(null, expected);
+        java.util.function.BiPredicate<Double, Double> actual = JeiReflectionCompat.mouseOverPredicate(mouse);
+        if (!actual.test(7.0, 8.0) || actual.test(8.0, 7.0)) throw new AssertionError("JEI mouse-over round trip");
+        System.out.println("JEI mouse-over compatibility checks passed");
         AtomicInteger calls = new AtomicInteger();
         Object target = JeiReflectionCompat.customInputHandler((proxy, method, values) -> switch (method.getName()) {
             case "toString" -> "JEI++ test input";
@@ -17,6 +24,14 @@ public final class JeiInputBridgeTest {
         });
         Class<?> api = target.getClass().getInterfaces()[0];
         boolean modern = api.getName().endsWith("IInputTarget");
+        if (!modern) {
+            Class<?> pluginType = Class.forName("com.lingmu0.JeiPlusPlusMod.client.DirectoryRecipePlugin");
+            Class<?> registrationType = Class.forName("mezz.jei.api.registration.IAdvancedRegistration");
+            Object plugin = pluginType.getConstructor().newInstance();
+            pluginType.getMethod("registerAdvanced", registrationType).invoke(plugin, new Object[]{null});
+            if ((boolean) pluginType.getMethod("usesNativeRecipeButtons").invoke(null)) throw new AssertionError("Legacy JEI must retain its overlay");
+            System.out.println("JEI legacy recipe button fallback checks passed");
+        }
         Method begin = Arrays.stream(api.getMethods()).filter(m -> m.getName().equals(modern ? "beginInput" : "handleUserInput")).findFirst().orElseThrow();
         Object[] inputArgs = new Object[begin.getParameterCount()];
         if (!modern) inputArgs[inputArgs.length - 2] = legacyInput(begin.getParameterTypes()[inputArgs.length - 2]);
@@ -43,6 +58,8 @@ public final class JeiInputBridgeTest {
         if (modern) JeiInputSceneTest.run(target, api, begin, inputArgs);
         System.out.println("JEI input compatibility checks passed against " + api.getName());
     }
+
+    /** Use a real legacy IMMEDIATE event; CombinedInputHandler reads its phase. */
 
     /** Use a real legacy IMMEDIATE event; CombinedInputHandler reads its phase. */
     private static Object legacyInput(Class<?> type) throws Exception {
