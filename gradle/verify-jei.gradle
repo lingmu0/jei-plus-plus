@@ -77,6 +77,7 @@ tasks.register('verifyJeiCompatibility') {
         sourceSets.main.output.classesDirs.files.each { d ->
             fileTree(d).matching { include '**/*.class'; exclude '**/mixin/**' }.files.each { f ->
                 def n = parse(f.bytes)
+                if (!modern && (n.name.contains('/RecipeTreeButtonFactory') || n.name.contains('/RecipeDefaultButtonFactory') || n.name.endsWith('/JeiNativeRecipeButtons'))) return
                 n.methods.each { m -> m.instructions.each { instruction ->
                     if (instruction instanceof MethodInsnNode || instruction instanceof FieldInsnNode) {
                         def owner = instruction.owner
@@ -98,6 +99,8 @@ tasks.register('verifyJeiCompatibility') {
             }
         }
         def calls = { n, name -> n.methods.find { it.name==name }.instructions.findAll { it instanceof MethodInsnNode } }
+        assert calls(own.DirectoryRecipePlugin, 'registerAdvanced').any { it.owner.endsWith('/JeiNativeRecipeButtons') && it.name=='register' } : 'Native button registration must be connected'
+        assert calls(own.JeiNativeRecipeButtons, 'register').count { it.name=='addRecipeButtonFactory' } == 2 : 'Both native recipe button factories must be registered'
         assert calls(own.RecipeTreeIcons, 'drawGlobalButton').any { it.name=='getButtonForState' || it.owner.endsWith('/ButtonSprites') && it.name=='render' } : 'Sidebar button must use the installed JEI skin'
         assert calls(own.BookmarkOverlayMixin, 'jeiPlusPlus$render').any { it.name=='drawGlobalButton' } : 'Sidebar must render the state-aware button'
         assert !calls(own.CreativeTabBar, 'draw').any { it.owner.endsWith('/CreativeTabSelector') && it.name=='draw' } : 'Modal must not render in the early ingredient pass'

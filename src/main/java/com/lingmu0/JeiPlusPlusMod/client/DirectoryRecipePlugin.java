@@ -5,6 +5,7 @@ import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.helpers.IGuiHelper;
 import mezz.jei.api.registration.IRecipeCategoryRegistration;
 import mezz.jei.api.registration.IRecipeRegistration;
+import mezz.jei.api.registration.IAdvancedRegistration;
 import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.resources.ResourceLocation;
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlus;
@@ -14,6 +15,7 @@ import com.lingmu0.JeiPlusPlusMod.JeiPlusPlus;
 public final class DirectoryRecipePlugin implements IModPlugin {
     private static volatile DirectoryRecipeCategory category;
     private static volatile IJeiRuntime jeiRuntime;
+    private static volatile boolean nativeRecipeButtons;
 
     @Override
     public ResourceLocation getPluginUid() {
@@ -31,6 +33,22 @@ public final class DirectoryRecipePlugin implements IModPlugin {
     @Override
     public void registerRecipes(IRecipeRegistration registration) {
         // Directory recipes are supplied on demand through IRecipesGui.showRecipes.
+    }
+
+    @Override
+    public void registerAdvanced(IAdvancedRegistration registration) {
+        nativeRecipeButtons = false;
+        try {
+            Class.forName("mezz.jei.common.input.IInputTarget", false, getClass().getClassLoader());
+        } catch (ClassNotFoundException absent) {
+            return;
+        }
+        JeiNativeRecipeButtons.register(registration);
+        nativeRecipeButtons = true;
+    }
+
+    public static boolean usesNativeRecipeButtons() {
+        return nativeRecipeButtons;
     }
 
     public static DirectoryRecipeCategory getCategory() {

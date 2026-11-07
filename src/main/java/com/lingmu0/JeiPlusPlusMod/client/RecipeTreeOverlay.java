@@ -24,6 +24,7 @@ public final class RecipeTreeOverlay {
     }
 
     public static void draw(RecipeGuiLayouts layouts, GuiGraphics graphics, int mouseX, int mouseY) {
+        if (DirectoryRecipePlugin.usesNativeRecipeButtons()) return;
         if (!JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get()) {
             return;
         }
@@ -64,6 +65,7 @@ public final class RecipeTreeOverlay {
     }
 
     public static boolean canClick(RecipeGuiLayouts layouts, double mouseX, double mouseY) {
+        if (DirectoryRecipePlugin.usesNativeRecipeButtons()) return false;
         if (!JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get()) return false;
         for (LayoutWrapper wrapper : wrappers(layouts)) {
             if ((contains(buttonArea(wrapper, 0), mouseX, mouseY)
@@ -74,6 +76,7 @@ public final class RecipeTreeOverlay {
     }
 
     public static boolean click(RecipeGuiLayouts layouts, double mouseX, double mouseY, int button) {
+        if (DirectoryRecipePlugin.usesNativeRecipeButtons()) return false;
         if (!JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get() || button != 0) {
             return false;
         }
@@ -103,6 +106,7 @@ public final class RecipeTreeOverlay {
      * grows the layout only when a new column is required.
      */
     public static int extraWidth(RecipeGuiLayouts layouts, int baseWidth) {
+        if (DirectoryRecipePlugin.usesNativeRecipeButtons()) return 0;
         if (!JeiPlusPlusConfig.RECIPE_TREE_ENABLED.get()) {
             return 0;
         }
