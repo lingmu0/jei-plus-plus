@@ -743,7 +743,8 @@ public final class RecipeTreeFavorites {
             int color = step == null
                 ? (remaining == 0 ? 0xFF55FF55 : 0xFFFF5555)
                 : (remaining == 0 ? 0xFF55FF55 : (intermediate ? 0xFFFFAA33 : 0xFF55CCFF));
-            return new AmountOverlay(remainingText(remaining), color);
+            return new AmountOverlay(remainingText(remaining), color,
+                step == null ? null : categoryIcon(step.recipe().category()));
         }
 
         @SuppressWarnings({"rawtypes", "unchecked"})
@@ -994,7 +995,26 @@ public final class RecipeTreeFavorites {
 
     }
 
-    private record AmountOverlay(String value, int color) implements IDrawable {
+    private static final java.util.Map<IRecipeCategory<?>, IDrawable> CATEGORY_ICONS = new java.util.WeakHashMap<>();
+
+    private static IDrawable categoryIcon(IRecipeCategory<?> category) {
+        IDrawable icon = category.getIcon();
+        if (icon != null) return icon;
+        icon = CATEGORY_ICONS.get(category);
+        if (icon != null) return icon;
+        IJeiRuntime runtime = DirectoryRecipePlugin.getJeiRuntime();
+        if (runtime == null) return null;
+        try {
+            icon = runtime.getRecipeManager().createRecipeCatalystLookup(category.getRecipeType()).get()
+                .findFirst().map(runtime.getJeiHelpers().getGuiHelper()::createDrawableIngredient).orElse(null);
+            if (icon != null) CATEGORY_ICONS.put(category, icon);
+        } catch (RuntimeException | LinkageError ignored) {
+            return null;
+        }
+        return icon;
+    }
+
+    private record AmountOverlay(String value, int color, IDrawable categoryIcon) implements IDrawable {
         @Override
         public int getWidth() {
             return 16;
@@ -1013,7 +1033,15 @@ public final class RecipeTreeFavorites {
             graphics.pose().pushMatrix();
             graphics.nextStratum();
             graphics.fill(xOffset, yOffset, xOffset + 2, yOffset + 2, color);
-            graphics.pose().translate(xOffset + 17, yOffset + 9);
+            if (categoryIcon != null && categoryIcon.getWidth() > 0 && categoryIcon.getHeight() > 0) {
+                graphics.pose().pushMatrix();
+                graphics.pose().translate(xOffset + 8, yOffset + 8);
+                float iconScale = Math.min(8.0f / categoryIcon.getWidth(), 8.0f / categoryIcon.getHeight());
+                graphics.pose().scale(iconScale, iconScale);
+                categoryIcon.draw(graphics, 0, 0);
+                graphics.pose().popMatrix();
+            }
+            graphics.pose().translate(xOffset + 17, yOffset + (categoryIcon == null ? 9 : 0));
             graphics.pose().scale(scale, scale);
             graphics.text(font, value, -textWidth, 0, color, true);
             graphics.pose().popMatrix();

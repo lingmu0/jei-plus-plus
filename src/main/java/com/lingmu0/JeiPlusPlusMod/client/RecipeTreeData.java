@@ -1398,7 +1398,7 @@ public final class RecipeTreeData {
         var menu = player.containerMenu;
         if (menu != null && menu != player.inventoryMenu) {
             for (var slot : menu.slots) {
-                if (slot.container == inventory) {
+                if (slot.container == inventory || StorageNetworkIntegration.isVirtualOrResultSlot(slot)) {
                     continue;
                 }
                 ItemStack stack = slot.getItem();
