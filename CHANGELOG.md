@@ -1,5 +1,23 @@
 # 更新日志 / Changelog
 
+## 1.1.0 — 2026-11-21
+
+### 中文
+
+- 配方树支持通用机械的灌注材料。冶金灌注配方可以选用固体材料或灌注材料，候选材料提示框会显示正确的图标。
+- 在 AE2 能识别通用机械化学品的环境中，配方树可批量制作包含灌注材料的处理样板。此功能需要服务端安装 JEI++。
+- 支持精妙存储和精妙背包的合成升级。打开合成升级后，可以转移配方、按槽位容量分批自动合成，并高亮相关槽位。
+- 修复新版 JEI 初始化物品列表和书签时的字节码校验错误，包括 1.21.1 的 JEI 19.70.0.469。保留旧版 JEI 兼容性。
+- 调整合成模式书签的工作方块小图标层级，让悬浮提示显示在其上方。
+
+### English
+
+- Added Mekanism infusion chemicals to the recipe tree. Metallurgic Infuser recipes can use either solid materials or infusion chemicals, with the correct icons in the alternatives tooltip.
+- When AE2 supports Mekanism chemical keys, recipe-tree bulk pattern encoding can include infusion chemicals in processing patterns. This feature requires JEI++ on the server.
+- Added support for Crafting Upgrades in Sophisticated Storage and Sophisticated Backpacks. With the crafting upgrade open, the recipe tree can transfer recipes, craft in batches sized to the available slots, and highlight relevant slots.
+- Fixed a bytecode verification error during ingredient-list and bookmark initialization on newer JEI builds, including JEI 19.70.0.469 on Minecraft 1.21.1. Older JEI releases remain supported.
+- Moved the workstation icon on crafting-mode bookmarks below the tooltip layer.
+
 ## 1.0.8a — 2026-10-26
 
 ### 中文
