@@ -1,9 +1,12 @@
 package com.lingmu0.JeiPlusPlusMod.client;
 
 import mezz.jei.common.util.ImmutableRect2i;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.lang.reflect.RecordComponent;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 
 /** Bridges JEI's input-scene hit testing without replacing its controls or shortcuts. */
 public final class JeiInputAreaCompat {
@@ -20,7 +23,47 @@ public final class JeiInputAreaCompat {
         }
     };
 
+    private static final ClassValue<InputAreaRecord> INPUT_AREA_RECORD = new ClassValue<>() {
+        @Override
+        protected InputAreaRecord computeValue(Class<?> type) {
+            RecordComponent[] components = type.getRecordComponents();
+            Method[] accessors = new Method[components.length];
+            Class<?>[] types = new Class<?>[components.length];
+            int controls = -1;
+            for (int i = 0; i < components.length; i++) {
+                accessors[i] = components[i].getAccessor();
+                types[i] = components[i].getType();
+                if (components[i].getName().equals("controls")) controls = i;
+            }
+            try {
+                if (controls >= 0) return new InputAreaRecord(type.getConstructor(types), accessors, controls);
+                throw new NoSuchFieldException("controls");
+            } catch (ReflectiveOperationException exception) {
+                throw new IllegalStateException("Unsupported JEI input area: " + type.getName(), exception);
+            }
+        }
+    };
+
+    private record InputAreaRecord(Constructor<?> constructor, Method[] accessors, int controls) {}
+
     private JeiInputAreaCompat() {}
+
+    public static Object wrapControls(Object area, UnaryOperator<Object> wrapper) {
+        InputAreaRecord layout = INPUT_AREA_RECORD.get(area.getClass());
+        Object[] values = new Object[layout.accessors.length];
+        try {
+            for (int i = 0; i < values.length; i++) {
+                values[i] = layout.accessors[i].invoke(area);
+            }
+            Object original = values[layout.controls];
+            Object wrapped = wrapper.apply(original);
+            if (wrapped == original) return area;
+            values[layout.controls] = wrapped;
+            return layout.constructor.newInstance(values);
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException("Unable to wrap JEI input area controls", exception);
+        }
+    }
 
     public static Optional<?> selectTarget(List<?> areas, Optional<?> nativeTarget, double x, double y) {
         // The picker covers the whole screen, including recipes and interactive tooltips.

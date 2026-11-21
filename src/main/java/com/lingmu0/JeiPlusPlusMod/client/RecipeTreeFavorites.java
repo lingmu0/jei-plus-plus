@@ -16,7 +16,6 @@ import mezz.jei.api.runtime.IRecipesGui;
 import mezz.jei.common.gui.JeiTooltip;
 import mezz.jei.common.input.IInternalKeyMappings;
 import mezz.jei.common.Internal;
-import mezz.jei.common.platform.Services;
 import mezz.jei.gui.bookmarks.BookmarkList;
 import mezz.jei.gui.bookmarks.BookmarkType;
 import mezz.jei.gui.bookmarks.IBookmark;
@@ -835,24 +834,8 @@ public final class RecipeTreeFavorites {
                         FluidRecipeCompat.formatAmount(value.getAmount())
                     ).withStyle(ChatFormatting.GRAY)
                 ));
-            } else {
-                @SuppressWarnings("unchecked")
-                IIngredientHelper<ItemStack> itemHelper = (IIngredientHelper<ItemStack>) ingredientHelper;
-                @SuppressWarnings("unchecked")
-                IIngredientRenderer<ItemStack> itemRenderer = (IIngredientRenderer<ItemStack>) ingredientRenderer;
-                List<ItemStack> alternatives = tooltipAlternatives();
-                if (alternatives.size() > 1) {
-                    itemHelper.getTagKeyEquivalent(alternatives).ifPresent(tagKey -> {
-                        tooltip.add(Component.translatable("jei.tooltip.recipe.tag", "")
-                            .withStyle(ChatFormatting.GRAY));
-                        tooltip.add(Services.PLATFORM.getRenderHelper().getName(tagKey)
-                            .copy().withStyle(ChatFormatting.GRAY));
-                    });
-                    JeiTooltipCompat.createTagContent(
-                        DirectoryRecipePlugin.getJeiRuntime(), itemRenderer, alternatives
-                    ).ifPresent(tooltip::add);
-                }
             }
+            JeiTooltipCompat.addAlternatives(tooltip, DirectoryRecipePlugin.getJeiRuntime(), tooltipAlternatives());
             long owned = owned();
             long total = total();
             ItemStack source = sourceStack();
@@ -942,21 +925,16 @@ public final class RecipeTreeFavorites {
         }
 
         private List<ItemStack> tooltipAlternatives() {
-            List<ItemStack> source = step == null
+            return step == null
                 ? (cost == null ? List.of() : cost.alternatives())
                 : step.alternatives();
-            return source.stream()
-                .filter(stack -> stack != null && !stack.isEmpty())
-                .map(stack -> {
-                    ItemStack copy = stack.copy();
-                    copy.setCount(1);
-                    return copy;
-                })
-                .toList();
         }
 
         private String quantityText(long units) {
             ItemStack source = sourceStack();
+            if (!MekanismChemicalIngredient.key(source).isEmpty()) {
+                return MekanismChemicalIngredient.formatAmount(units);
+            }
             if (!source.isEmpty() && FluidRecipeCompat.treeFluid(source).isPresent()) {
                 return FluidRecipeCompat.formatAmount(FluidRecipeCompat.amountForUnits(source, units));
             }
@@ -1032,20 +1010,41 @@ public final class RecipeTreeFavorites {
             int textWidth = Math.max(1, font.width(value));
             float scale = Math.min(1.0f, 16.0f / textWidth);
             graphics.pose().pushPose();
-            graphics.pose().translate(0, 0, 300);
-            graphics.fill(xOffset, yOffset, xOffset + 2, yOffset + 2, color);
             if (categoryIcon != null && categoryIcon.getWidth() > 0 && categoryIcon.getHeight() > 0) {
                 graphics.pose().pushPose();
-                graphics.pose().translate(xOffset + 8, yOffset + 8, 0);
+                // Match the depth and Z scale of JEI's native recipe bookmark icon.
+                graphics.pose().translate(xOffset + 8, yOffset + 8, 200);
                 float iconScale = Math.min(8.0f / categoryIcon.getWidth(), 8.0f / categoryIcon.getHeight());
-                graphics.pose().scale(iconScale, iconScale, 1.0f);
+                graphics.pose().scale(iconScale, iconScale, 0.5f);
                 categoryIcon.draw(graphics, 0, 0);
                 graphics.pose().popPose();
             }
+            graphics.pose().translate(0, 0, 300);
+            graphics.fill(xOffset, yOffset, xOffset + 2, yOffset + 2, color);
             graphics.pose().translate(xOffset + 17, yOffset + (categoryIcon == null ? 9 : 0), 0);
             graphics.pose().scale(scale, scale, 1.0f);
             graphics.drawString(font, value, -textWidth, 0, color, true);
             graphics.pose().popPose();
         }
+    }
+
+    /** Draw a recipe tree marker in the slot's current render coordinates. */
+    public static void renderSlotHighlight(GuiGraphics graphics, Slot slot) {
+        if (slot.getItem().isEmpty()) return;
+        boolean finalProduct = isFinalProduct(slot.getItem());
+        boolean intermediate = isIntermediate(slot.getItem());
+        boolean required = isRequired(slot.getItem());
+        if (!finalProduct && !intermediate && !required) return;
+
+        int fill = finalProduct ? 0x4433CC66 : (intermediate ? 0x44FF2222 : 0x3300BBFF);
+        int border = finalProduct ? 0xDD66FF88 : (intermediate ? 0xDDFF5555 : 0xCC55DDFF);
+        graphics.pose().pushPose();
+        graphics.pose().translate(0, 0, 300);
+        graphics.fill(slot.x, slot.y, slot.x + 16, slot.y + 16, fill);
+        graphics.fill(slot.x, slot.y, slot.x + 16, slot.y + 1, border);
+        graphics.fill(slot.x, slot.y + 15, slot.x + 16, slot.y + 16, border);
+        graphics.fill(slot.x, slot.y, slot.x + 1, slot.y + 16, border);
+        graphics.fill(slot.x + 15, slot.y, slot.x + 16, slot.y + 16, border);
+        graphics.pose().popPose();
     }
 }

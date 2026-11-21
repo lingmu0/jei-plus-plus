@@ -556,6 +556,11 @@ final class Ae2StorageIntegration {
                 }
                 continue;
             }
+            var chemical = MekanismChemicalIngredient.fromNetworkKey(key);
+            if (chemical.isPresent()) {
+                stacks.add(new StoredStack(chemical.get(), amount));
+                continue;
+            }
             Optional<FluidRecipeCompat.FluidInfo> info = FluidRecipeCompat.describeFluid(key);
             if (info.isPresent()) {
                 long fluidAmount = Math.max(amount / 81L, info.get().amount());
@@ -864,7 +869,7 @@ final class Ae2StorageIntegration {
         private final long amount;
 
         private StoredStack(ItemStack stack, long amount) {
-            this.stack = stack.copy();
+            this.stack = FluidRecipeCompat.copyWithDisplay(stack);
             this.stack.setCount(1);
             this.amount = amount;
         }
