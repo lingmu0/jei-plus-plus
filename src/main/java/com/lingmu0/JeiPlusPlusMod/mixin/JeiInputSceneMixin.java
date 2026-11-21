@@ -13,7 +13,7 @@ import java.util.Optional;
 public abstract class JeiInputSceneMixin {
     @Shadow @Final private List<?> inputAreas;
 
-    @Inject(method = "findTarget", at = @At("RETURN"), cancellable = true, remap = false)
+    @Inject(method = "findTarget(DD)Ljava/util/Optional;", at = @At("RETURN"), cancellable = true, remap = false)
     private void jeiPlusPlus$extraAreas(double x, double y, CallbackInfoReturnable<Optional<?>> cir) {
         cir.setReturnValue(JeiInputAreaCompat.selectTarget(inputAreas, cir.getReturnValue(), x, y));
     }
