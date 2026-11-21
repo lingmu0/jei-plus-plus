@@ -86,9 +86,22 @@ public abstract class BookmarkOverlayMixin implements JeiExtraInputArea {
         }
     }
 
-    @Inject(method = "createInputHandler", at = @At("RETURN"), cancellable = true, remap = false)
+    @Inject(method = {
+        "createInputHandler()Lmezz/jei/gui/input/IUserInputHandler;",
+        "createInputHandler()Lmezz/jei/common/input/IUserInputHandler;"
+    }, at = @At("RETURN"), cancellable = true, remap = false, require = 0)
     private void jeiPlusPlus$input(CallbackInfoReturnable<Object> cir) {
-        Object original = cir.getReturnValue();
+        cir.setReturnValue(jeiPlusPlus$wrapTreeButton(cir.getReturnValue()));
+    }
+
+    @Inject(method = "createInputArea(Lmezz/jei/common/input/IInternalKeyMappings;)Lmezz/jei/gui/input/InputArea;",
+        at = @At("RETURN"), cancellable = true, remap = false, require = 0)
+    private void jeiPlusPlus$areaInput(CallbackInfoReturnable<Object> cir) {
+        cir.setReturnValue(JeiInputAreaCompat.wrapControls(cir.getReturnValue(), this::jeiPlusPlus$wrapTreeButton));
+    }
+
+    @Unique
+    private Object jeiPlusPlus$wrapTreeButton(Object original) {
         Object tree = JeiReflectionCompat.customInputHandler((proxy, method, args) -> {
             if (method.getName().equals("toString")) return "JEI++ tree button";
             if (method.getName().equals("hashCode")) return System.identityHashCode(proxy);
@@ -110,7 +123,7 @@ public abstract class BookmarkOverlayMixin implements JeiExtraInputArea {
             return Optional.of(proxy);
         });
         Object combined = JeiReflectionCompat.combineInputHandlers("JEI++ bookmarks", tree, original);
-        cir.setReturnValue(JeiReflectionCompat.proxyInputHandler(() ->
-            Minecraft.getInstance().screen instanceof RecipeTreeScreen ? tree : combined));
+        return JeiReflectionCompat.proxyInputHandler(() ->
+            Minecraft.getInstance().screen instanceof RecipeTreeScreen ? tree : combined);
     }
 }

@@ -1,18 +1,12 @@
 package com.lingmu0.JeiPlusPlusMod.client;
 
 import com.lingmu0.JeiPlusPlusMod.JeiPlusPlusConfig;
-import mezz.jei.api.constants.VanillaTypes;
 import mezz.jei.api.gui.IRecipeLayoutDrawable;
 import mezz.jei.api.gui.drawable.IDrawable;
-import mezz.jei.api.ingredients.IIngredientHelper;
-import mezz.jei.api.ingredients.IIngredientRenderer;
 import mezz.jei.api.recipe.IFocus;
 import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.runtime.IJeiRuntime;
 import mezz.jei.common.gui.JeiTooltip;
-import mezz.jei.common.platform.Services;
-import mezz.jei.common.util.SafeIngredientUtil;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -645,41 +639,20 @@ public final class RecipeTreeScreen extends Screen {
             return;
         }
 
-        List<ItemStack> alternatives = node.alternatives().stream()
-            .map(stack -> {
-                ItemStack copy = FluidRecipeCompat.copyWithDisplay(stack);
-                copy.setCount(1);
-                return copy;
-            })
-            .toList();
         ItemStack displayed = FluidRecipeCompat.copyWithDisplay(node.stack());
         displayed.setCount(1);
-        if (FluidRecipeCompat.renderTooltip(graphics, displayed, mouseX, mouseY)) {
-            return;
-        }
-        var typed = runtime.getIngredientManager()
-            .createTypedIngredient(VanillaTypes.ITEM_STACK, displayed);
+        var manager = runtime.getIngredientManager();
+        var typed = FluidRecipeCompat.toTyped(manager, displayed);
         if (typed.isEmpty()) {
-            graphics.setTooltipForNextFrame(font, displayed, mouseX, mouseY);
+            if (!FluidRecipeCompat.renderTooltip(graphics, displayed, mouseX, mouseY)) {
+                graphics.setTooltipForNextFrame(font, displayed, mouseX, mouseY);
+            }
             return;
         }
 
-        IIngredientRenderer<ItemStack> renderer = runtime.getIngredientManager()
-            .getIngredientRenderer(VanillaTypes.ITEM_STACK);
-        IIngredientHelper<ItemStack> helper = runtime.getIngredientManager()
-            .getIngredientHelper(VanillaTypes.ITEM_STACK);
         JeiTooltip tooltip = new JeiTooltip();
-        SafeIngredientUtil.getRichTooltip(tooltip, runtime.getIngredientManager(), renderer, typed.get());
-        helper.getTagKeyEquivalent(alternatives).ifPresent(tagKey -> {
-            tooltip.add(Component.translatable("jei.tooltip.recipe.tag", "")
-                .withStyle(ChatFormatting.GRAY));
-            tooltip.add(Services.PLATFORM.getRenderHelper().getName(tagKey)
-                .copy().withStyle(ChatFormatting.GRAY));
-        });
-        if (alternatives.size() > 1) {
-            JeiTooltipCompat.createTagContent(runtime, renderer, alternatives)
-                .ifPresent(tooltip::add);
-        }
+        JeiTooltipCompat.addIngredientTooltip(tooltip, manager, typed.get());
+        JeiTooltipCompat.addAlternatives(tooltip, runtime, node.alternatives());
         graphics.pose().pushMatrix();
         graphics.nextStratum();
         tooltip.draw(graphics, mouseX, mouseY);
@@ -1154,20 +1127,23 @@ public final class RecipeTreeScreen extends Screen {
             return supplied
                 + "/" + quantityText(cost.stack(), cost.required(), fluid);
         }
-        return !fluid && cost.required() == 1
+        return !fluid && MekanismChemicalIngredient.key(cost.stack()).isEmpty() && cost.required() == 1
             ? ""
             : quantityText(cost.stack(), cost.required(), fluid);
     }
 
     private static String formatNodeAmount(ItemStack stack, long amount) {
         boolean fluid = FluidRecipeCompat.treeFluid(stack).isPresent();
-        if (!fluid && amount == 1) {
+        if (!fluid && MekanismChemicalIngredient.key(stack).isEmpty() && amount == 1) {
             return "";
         }
         return quantityText(stack, amount, fluid);
     }
 
     private static String quantityText(ItemStack stack, long units, boolean fluid) {
+        if (!MekanismChemicalIngredient.key(stack).isEmpty()) {
+            return MekanismChemicalIngredient.formatAmount(units);
+        }
         if (fluid) {
             return FluidRecipeCompat.formatAmount(FluidRecipeCompat.amountForUnits(stack, units));
         }
