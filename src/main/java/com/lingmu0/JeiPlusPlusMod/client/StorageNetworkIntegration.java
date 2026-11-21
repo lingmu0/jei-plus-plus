@@ -2185,7 +2185,7 @@ final class StorageNetworkIntegration {
         private final long amount;
 
         private StoredStack(ItemStack stack, long amount) {
-            this.stack = stack.copy();
+            this.stack = FluidRecipeCompat.copyWithDisplay(stack);
             this.stack.setCount(1);
             this.key = RecipeTreeData.ingredientKey(this.stack);
             this.amount = amount;

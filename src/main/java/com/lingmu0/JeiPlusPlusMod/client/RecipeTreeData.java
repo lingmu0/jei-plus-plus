@@ -102,6 +102,7 @@ public final class RecipeTreeData {
         RecipeRef ref,
         List<RecipeInput> inputs,
         int inputSlotCount,
+        boolean unsupportedInputs,
         List<ItemStack> outputs,
         List<List<ItemStack>> outputSlots
     ) {
@@ -1095,7 +1096,7 @@ public final class RecipeTreeData {
      * API throws IllegalArgumentException for those values.
      */
     public static Optional<IFocus<ItemStack>> createOutputFocus(IJeiRuntime runtime, ItemStack target) {
-        if (runtime == null || target == null || target.isEmpty()) {
+        if (runtime == null || target == null || target.isEmpty() || !MekanismChemicalIngredient.key(target).isEmpty()) {
             return Optional.empty();
         }
         ItemStack focusStack = target.copy();
@@ -1132,6 +1133,8 @@ public final class RecipeTreeData {
         if (stack == null || stack.isEmpty()) {
             return "minecraft:air";
         }
+        String chemicalKey = MekanismChemicalIngredient.key(stack);
+        if (!chemicalKey.isEmpty()) return chemicalKey;
         Optional<String> fluidKey = FluidRecipeCompat.fluidKey(stack);
         if (fluidKey.isPresent()) {
             return fluidKey.get();
@@ -1193,6 +1196,7 @@ public final class RecipeTreeData {
         Map<String, ItemStack> outputs = new LinkedHashMap<>();
         List<List<ItemStack>> outputSlots = new ArrayList<>();
         int inputSlotCount = 0;
+        boolean unsupportedInputs = false;
         for (IRecipeSlotView slot : layout.getRecipeSlotsView().getSlotViews()) {
             RecipeIngredientRole role = slot.getRole();
             // JEI catalysts are machines/tools and are not consumed materials.
@@ -1202,6 +1206,9 @@ public final class RecipeTreeData {
             int inputSlotIndex = role == RecipeIngredientRole.INPUT ? inputSlotCount++ : -1;
             List<ItemStack> alternatives = displayedStacks(slot, role == RecipeIngredientRole.INPUT);
             if (alternatives.isEmpty()) {
+                if (role == RecipeIngredientRole.INPUT && slot.getAllIngredients().findAny().isPresent()) {
+                    unsupportedInputs = true;
+                }
                 continue;
             }
             if (role == RecipeIngredientRole.INPUT) {
@@ -1219,13 +1226,14 @@ public final class RecipeTreeData {
                 ref.recipe(), runtime.getIngredientManager()
             )) {
                 List<ItemStack> alternatives = displayedStacks(ingredients, true);
+                if (alternatives.isEmpty() && !ingredients.isEmpty()) unsupportedInputs = true;
                 addRecipeInput(groupedInputs, alternatives, inputSlotCount++);
             }
         }
         List<RecipeInput> inputs = groupedInputs.values().stream()
             .map(MutableRecipeInput::freeze)
             .toList();
-        RecipeSnapshot snapshot = new RecipeSnapshot(ref, inputs, inputSlotCount, List.copyOf(outputs.values()), List.copyOf(outputSlots));
+        RecipeSnapshot snapshot = new RecipeSnapshot(ref, inputs, inputSlotCount, unsupportedInputs, List.copyOf(outputs.values()), List.copyOf(outputSlots));
         RECIPE_SNAPSHOT_CACHE.put(ref, snapshot);
         return snapshot;
     }
@@ -1285,6 +1293,11 @@ public final class RecipeTreeData {
             if (input) {
                 FluidRecipeCompat.containerCandidate(ingredient)
                     .ifPresent(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
+                for (ItemStack stack : MekanismInfusionItems.alternatives(ingredient)) {
+                    unique.putIfAbsent(ingredientKey(stack), stack);
+                }
+                MekanismChemicalIngredient.fromIngredient(ingredient)
+                    .ifPresent(stack -> unique.putIfAbsent(ingredientKey(stack), stack));
             }
         }
         if (input && unique.isEmpty()) {
@@ -1311,7 +1324,9 @@ public final class RecipeTreeData {
      * (usually oak) entry as the accidental default.
      */
     static List<ItemStack> candidateStacks(IRecipeSlotView slot) {
-        return slot == null ? List.of() : displayedStacks(slot, true);
+        return slot == null ? List.of() : displayedStacks(slot, true).stream()
+            .filter(stack -> MekanismChemicalIngredient.key(stack).isEmpty())
+            .toList();
     }
 
     private static final class MutableRecipeInput {
@@ -1754,7 +1769,7 @@ public final class RecipeTreeData {
             availableAmount(available, key),
             mapAmount(stack, amount)
         ));
-        if (FluidRecipeCompat.fluidKey(stack).isEmpty()) {
+        if (MekanismChemicalIngredient.key(stack).isEmpty() && FluidRecipeCompat.fluidKey(stack).isEmpty()) {
             FluidRecipeCompat.fluidRepresentation(stack).ifPresent(fluid -> {
                 String fluidKey = ingredientKey(fluid);
                 setAvailable(available, fluidKey, safeAdd(
@@ -1812,7 +1827,7 @@ public final class RecipeTreeData {
         // A filled container can satisfy a fluid ingredient as well as an
         // explicit bucket ingredient. Keep both keys in the planning map so
         // fluid candidates recurse through inventory/network containers.
-        if (FluidRecipeCompat.fluidKey(stack).isEmpty()) {
+        if (MekanismChemicalIngredient.key(stack).isEmpty() && FluidRecipeCompat.fluidKey(stack).isEmpty()) {
             FluidRecipeCompat.fluidRepresentation(stack).ifPresent(fluid ->
                 add(map, fluid, mapAmount(fluid, units))
             );
@@ -1837,7 +1852,9 @@ public final class RecipeTreeData {
         if (node == null || amount <= 0) {
             return;
         }
-        List<ItemStack> alternatives = node.explicitChoice ? List.of(node.stack) : node.alternatives;
+        List<ItemStack> alternatives = node.explicitChoice || MekanismChemicalIngredient.hasChemical(node.alternatives)
+            ? List.of(node.stack)
+            : node.alternatives;
         String key = alternatives.stream()
             .map(RecipeTreeData::ingredientKey)
             .distinct()
@@ -1863,7 +1880,7 @@ public final class RecipeTreeData {
             return remainingAmount <= 0 ? 0 : ceilDiv(remainingAmount, perUnit);
         }
         long remaining = consume(map, node.ingredientKey, desired);
-        if (!node.explicitChoice && remaining > 0) {
+        if (!node.explicitChoice && !MekanismChemicalIngredient.hasChemical(node.alternatives) && remaining > 0) {
             for (ItemStack alternative : node.alternatives) {
                 String key = ingredientKey(alternative);
                 if (!key.equals(node.ingredientKey)) {
