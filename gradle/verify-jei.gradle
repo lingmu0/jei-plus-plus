@@ -52,6 +52,14 @@ tasks.register('verifyJeiCompatibility') {
                         } }
                         if(!matches && v.require==0) return
                         assert matches : "JEI ${project.jei_version}: invalid injection ${n.name} -> ${name} ${v.method}"
+                        if (simple in ['BookmarkOverlayMixin', 'JeiIngredientOverlayInputMixin', 'JeiInputSceneMixin']
+                            && (v.at ?: []).any { av(it).value == 'RETURN' }) {
+                            matches.each { method ->
+                                assert !method.instructions.any { it instanceof VarInsnNode && it.var == 0
+                                    && it.opcode >= Opcodes.ISTORE && it.opcode <= Opcodes.ASTORE } :
+                                    "JEI ${project.jei_version}: instance callback targets a method that reuses local slot 0: ${name}.${method.name}${method.desc}"
+                            }
+                        }
                         def args=Type.getArgumentTypes(m.desc)
                         int ci=args.findIndexOf { it.className.startsWith('org.spongepowered.asm.mixin.injection.callback.') }
                         assert ci>=0
@@ -107,6 +115,10 @@ tasks.register('verifyJeiCompatibility') {
         assert models['mezz/jei/gui/events/GuiEventHandler'].methods.any { it.name in ['drawForScreenForeground','onDrawScreenPost'] } : 'No supported final JEI render pass'
         assert calls(own.JeiModalRenderMixin, 'jeiPlusPlus$modal').any { it.name=='drawModal' }
         if (modern) {
+            def area = models['mezz/jei/gui/input/InputArea']
+            assert area?.recordComponents?.any { it.name == 'controls' && it.descriptor == 'Lmezz/jei/common/input/IInputTarget;' }
+            assert calls(own.BookmarkOverlayMixin, 'jeiPlusPlus$areaInput').any { it.name == 'wrapControls' }
+            assert calls(own.JeiIngredientOverlayInputMixin, 'jeiPlusPlus$priorityInput').any { it.name == 'wrapControls' }
             def navigationCalls=calls(own.JeiInputAreaCompat, 'scrollRecipeNavigation')*.name
             assert navigationCalls.indexOf('scrollRecipeTabs')>=0 && navigationCalls.indexOf('scrollRecipeTabs')<navigationCalls.indexOf('buttonBand') : 'Tab rows must have first refusal'
             assert calls(own.JeiRecipeNavigationMixin, 'jeiPlusPlus$navigation').any { it.name=='scrollRecipeNavigation' }

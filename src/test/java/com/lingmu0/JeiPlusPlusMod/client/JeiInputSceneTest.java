@@ -15,8 +15,8 @@ public final class JeiInputSceneTest {
         Hover ingredients = new Hover(rect(120, 40, 100, 120), rect(120, 20, 100, 18));
         Hover bookmarks = new Hover(rect(0, 160, 100, 20), rect(100, 160, 20, 20));
         Object recipe = area(areaApi, mouseApi, inputApi, "recipes", recipes, controls);
-        Object ingredient = area(areaApi, mouseApi, inputApi, "ingredients", ingredients, controls);
-        Object bookmark = area(areaApi, mouseApi, inputApi, "bookmarks", bookmarks, controls);
+        Object ingredient = wrapArea(areaApi, area(areaApi, mouseApi, inputApi, "ingredients", ingredients, controls));
+        Object bookmark = wrapArea(areaApi, area(areaApi, mouseApi, inputApi, "bookmarks", bookmarks, controls));
         List<Object> areas = List.of(recipe, ingredient, bookmark);
         Object scene = scene(sceneApi, areaApi, areas);
 
@@ -110,6 +110,20 @@ public final class JeiInputSceneTest {
     private static ImmutableRect2i rect(int x, int y, int w, int h) { return new ImmutableRect2i(x, y, w, h); }
     private static void check(boolean value, String message) { if (!value) throw new AssertionError(message); }
 
+    private static Object wrapArea(Class<?> type, Object area) throws Exception {
+        Object wrapped = JeiInputAreaCompat.wrapControls(area, original -> JeiReflectionCompat.proxyInputHandler(() -> original));
+        for (RecordComponent component : type.getRecordComponents()) {
+            Object previous = component.getAccessor().invoke(area);
+            Object current = component.getAccessor().invoke(wrapped);
+            if (component.getName().equals("controls")) {
+                check(previous != current, "install wrapped controls");
+            } else {
+                check(Objects.equals(previous, current), "preserve input area component " + component.getName());
+            }
+        }
+        return wrapped;
+    }
+
     private static Object area(Class<?> areaApi, Class<?> mouseApi, Class<?> inputApi,
                                String name, Hover hover, Object controls) throws Exception {
         Object source = Proxy.newProxyInstance(JeiInputSceneTest.class.getClassLoader(),
@@ -130,7 +144,13 @@ public final class JeiInputSceneTest {
     private static Object scene(Class<?> sceneApi, Class<?> areaApi, List<Object> areas) throws Exception {
         Object array = Array.newInstance(areaApi, areas.size());
         for (int i = 0; i < areas.size(); i++) Array.set(array, i, areas.get(i));
-        return sceneApi.getConstructor(array.getClass()).newInstance(array);
+        try {
+            return sceneApi.getConstructor(array.getClass()).newInstance(array);
+        } catch (NoSuchMethodException legacyConstructorAbsent) {
+            Class<?> focusApi = Class.forName("mezz.jei.gui.input.focus.GuiKeyboardFocus");
+            return sceneApi.getConstructor(focusApi, array.getClass())
+                .newInstance(focusApi.getConstructor().newInstance(), array);
+        }
     }
 
     private static Optional<?> nativeTarget(Object scene, double x, double y) throws Exception {

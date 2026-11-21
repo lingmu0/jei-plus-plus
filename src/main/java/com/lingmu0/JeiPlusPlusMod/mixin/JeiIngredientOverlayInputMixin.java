@@ -20,9 +20,11 @@ public abstract class JeiIngredientOverlayInputMixin implements JeiExtraInputAre
         return CreativeTabGridCompat.ownsSelector(JeiReflectionCompat.readField(this, "contents"));
     }
 
-    @Inject(method = "createInputHandler", at = @At("RETURN"), cancellable = true, remap = false)
+    @Inject(method = "createInputArea(Lmezz/jei/common/input/IInternalKeyMappings;)Lmezz/jei/gui/input/InputArea;",
+        at = @At("RETURN"), cancellable = true, remap = false)
     private void jeiPlusPlus$priorityInput(CallbackInfoReturnable<Object> cir) {
-        cir.setReturnValue(CreativeTabGridCompat.wrapInput(
-            JeiReflectionCompat.readField(this, "contents"), cir.getReturnValue()));
+        Object contents = JeiReflectionCompat.readField(this, "contents");
+        cir.setReturnValue(JeiInputAreaCompat.wrapControls(cir.getReturnValue(),
+            controls -> CreativeTabGridCompat.wrapInput(contents, controls)));
     }
 }
